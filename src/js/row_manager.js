@@ -1092,7 +1092,7 @@ RowManager.prototype.reRenderInPosition = function(callback){
 };
 
 RowManager.prototype.setRenderMode = function(){
-	if((this.table.element.clientHeight || this.table.options.height) && this.table.options.virtualDom){
+	if(this.table.options.virtualDom){
 		this.renderMode = "virtual";
 	}else{
 		this.renderMode = "classic";
@@ -1546,7 +1546,7 @@ RowManager.prototype.normalizeHeight = function(){
 RowManager.prototype.adjustTableSize = function(){
 
 	if(this.renderMode === "virtual"){
-		this.height = this.element.clientHeight;
+		this.height = this.element.clientHeight || 1;
 		this.vDomWindowBuffer = this.table.options.virtualDomBuffer || this.height;
 
 		let otherHeight = this.columnManager.getElement().offsetHeight + (this.table.footerManager && !this.table.footerManager.external ? this.table.footerManager.getElement().offsetHeight : 0);
