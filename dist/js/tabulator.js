@@ -112,7 +112,7 @@ var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol
 		this.rowManager = null; //hold row manager object
 		this.columns = []; // column definition object
 		this.columnsByIndex = []; //columns by index
-		this.columnsByField = []; //columns by field
+		this.columnsByField = {}; //columns by field
 		this.scrollLeft = 0;
 
 		this.element.insertBefore(this.headersElement, this.element.firstChild);
