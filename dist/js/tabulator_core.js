@@ -241,7 +241,7 @@ ColumnManager.prototype.setColumns = function (cols, row) {
 		self.headersElement.removeChild(self.headersElement.firstChild);
 	}self.columns = [];
 	self.columnsByIndex = [];
-	self.columnsByField = [];
+	self.columnsByField = {};
 
 	//reset frozen columns
 	if (self.table.modExists("frozenColumns")) {
