@@ -145,7 +145,7 @@ ColumnManager.prototype.setColumns = function(cols, row){
 
 	self.columns = [];
 	self.columnsByIndex = [];
-	self.columnsByField = [];
+	self.columnsByField = {};
 
 
 	//reset frozen columns
