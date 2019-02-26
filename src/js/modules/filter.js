@@ -5,6 +5,7 @@ var Filter = function(table){
 	this.filterList = []; //hold filter list
 	this.headerFilters = {}; //hold column filters
 	this.headerFilterElements = []; //hold header filter elements for manipulation
+	this.headerFilterColumns = []; //hold columns that use header filters
 
 	this.changed = false; //has filtering changed since last render
 };
@@ -35,7 +36,12 @@ Filter.prototype.initializeColumn = function(column, value){
 					if(self.filters[column.definition.headerFilterFunc]){
 						type = column.definition.headerFilterFunc;
 						filterFunc = function(data){
-							return self.filters[column.definition.headerFilterFunc](value, column.getFieldValue(data));
+							var params = column.definition.headerFilterFuncParams || {};
+							var fieldVal = column.getFieldValue(data);
+
+							params = typeof params === "function" ? params(value, fieldVal, data) : params;
+
+							return self.filters[column.definition.headerFilterFunc](value, fieldVal, data, params);
 						};
 					}else{
 						console.warn("Header Filter Error - Matching filter function not found: ", column.definition.headerFilterFunc);
@@ -105,7 +111,18 @@ Filter.prototype.generateHeaderFilterElement = function(column, initialValue){
 	function cancel(){}
 
 	if(column.modules.filter.headerElement && column.modules.filter.headerElement.parentNode){
-		column.modules.filter.headerElement.parentNode.removeChild(column.modules.filter.headerElement);
+		var oldFilterElement = column.modules.filter.headerElement.parentNode;
+		var oldFilterElementIndex = self.headerFilterElements.indexOf(oldFilterElement);
+		if (oldFilterElementIndex >= 0) {
+			self.headerFilterElements.splice(oldFilterElementIndex, 1);
+		}
+
+		var oldColumnIndex = self.headerFilterColumns.indexOf(oldColumnIndex);
+		if (oldColumnIndex >= 0) {
+			self.headerFilterColumns.splice(oldColumnIndex, 1);
+		}
+
+		column.contentElement.removeChild(oldFilterElement);
 	}
 
 	if(field){
@@ -169,6 +186,9 @@ Filter.prototype.generateHeaderFilterElement = function(column, initialValue){
 				getElement:function(){
 					return filterElement;
 				},
+				getColumn:function(){
+					return column.getComponent();
+				},
 				getRow:function(){
 					return {
 						normalizeHeight:function(){
@@ -182,7 +202,17 @@ Filter.prototype.generateHeaderFilterElement = function(column, initialValue){
 
 			params = typeof params === "function" ? params.call(self.table) : params;
 
-			editorElement = editor.call(self, cellWrapper, function(){}, success, cancel, params);
+			editorElement = editor.call(this.table.modules.edit, cellWrapper, function(){}, success, cancel, params);
+
+			if(!editorElement){
+				console.warn("Filter Error - Cannot add filter to " + field + " column, editor returned a value of false");
+				return;
+			}
+
+			if(!(editorElement instanceof Node)){
+				console.warn("Filter Error - Cannot add filter to " + field + " column, editor should return an instance of Node, the editor returned:", editorElement);
+				return;
+			}
 
 			//set Placeholder Text
 			if(field){
@@ -214,32 +244,38 @@ Filter.prototype.generateHeaderFilterElement = function(column, initialValue){
 				},300);
 			};
 
-			editorElement.addEventListener("keyup", searchTrigger);
-			editorElement.addEventListener("search", searchTrigger);
-
 			column.modules.filter.headerElement = editorElement;
-
-			//update number filtered columns on change
-
 			column.modules.filter.attrType = editorElement.hasAttribute("type") ? editorElement.getAttribute("type").toLowerCase() : "" ;
-			if(column.modules.filter.attrType == "number"){
-				editorElement.addEventListener("change", function(e){
-					success(editorElement.value);
-				});
+			column.modules.filter.tagType = editorElement.tagName.toLowerCase();
+
+			if(column.definition.headerFilterLiveFilter !== false){
+
+				if(!(column.definition.headerFilter === "autocomplete" || (column.definition.editor === "autocomplete" && column.definition.headerFilter === true))){
+					editorElement.addEventListener("keyup", searchTrigger);
+					editorElement.addEventListener("search", searchTrigger);
+
+
+				//update number filtered columns on change
+				if(column.modules.filter.attrType == "number"){
+					editorElement.addEventListener("change", function(e){
+						success(editorElement.value);
+					});
+				}
+
+				//change text inputs to search inputs to allow for clearing of field
+				if(column.modules.filter.attrType == "text" && this.table.browser !== "ie"){
+					editorElement.setAttribute("type", "search");
+					// editorElement.off("change blur"); //prevent blur from triggering filter and preventing selection click
+				}
+
 			}
 
-			//change text inputs to search inputs to allow for clearing of field
-			if(column.modules.filter.attrType == "text" && this.table.browser !== "ie"){
-				editorElement.setAttribute("type", "search");
-				// editorElement.off("change blur"); //prevent blur from triggering filter and preventing selection click
-			}
-
-			//prevent input and select elements from propegating click to column sorters etc
-			column.modules.filter.tagType = editorElement.tagName.toLowerCase()
-			if(column.modules.filter.tagType == "input" || column.modules.filter.tagType == "select" || column.modules.filter.tagType == "textarea"){
-				editorElement.addEventListener("mousedown",function(e){
-					e.stopPropagation();
-				});
+				//prevent input and select elements from propegating click to column sorters etc
+				if(column.modules.filter.tagType == "input" || column.modules.filter.tagType == "select" || column.modules.filter.tagType == "textarea"){
+					editorElement.addEventListener("mousedown",function(e){
+						e.stopPropagation();
+					});
+				}
 			}
 
 			filterElement.appendChild(editorElement);
@@ -247,12 +283,13 @@ Filter.prototype.generateHeaderFilterElement = function(column, initialValue){
 			column.contentElement.appendChild(filterElement);
 
 			self.headerFilterElements.push(editorElement);
+			self.headerFilterColumns.push(column);
 		}
 	}else{
 		console.warn("Filter Error - Cannot add header filter, column has no field set:", column.definition.title);
 	}
 
-}
+};
 
 //hide all header filter elements (used to ensure correct column widths in "fitData" layout mode)
 Filter.prototype.hideHeaderFilterElements = function(){
@@ -496,17 +533,56 @@ Filter.prototype.clearFilter = function(all){
 
 //clear header filters
 Filter.prototype.clearHeaderFilter = function(){
+	var self = this;
+
 	this.headerFilters = {};
 
-	this.headerFilterElements.forEach(function(element){
-		element.value = "";
+	this.headerFilterColumns.forEach(function(column){
+		column.modules.filter.value = null;
+		self.reloadHeaderFilter(column);
 	});
 
 	this.changed = true;
 };
 
+//search data and return matching rows
+Filter.prototype.search = function (searchType, field, type, value){
+	var self = this,
+	activeRows = [],
+	filterList = [];
+
+	if(!Array.isArray(field)){
+		field = [{field:field, type:type, value:value}];
+	}
+
+	field.forEach(function(filter){
+		filter = self.findFilter(filter);
+
+		if(filter){
+			filterList.push(filter);
+		}
+	});
+
+	this.table.rowManager.rows.forEach(function(row){
+		var match = true;
+
+		filterList.forEach(function(filter){
+			if(!self.filterRecurse(filter, row.getData())){
+				match = false;
+			}
+		});
+
+		if(match){
+			activeRows.push(searchType === "data" ? row.getData("data") : row.getComponent());
+		}
+
+	});
+
+	return activeRows;
+};
+
 //filter row array
-Filter.prototype.filter = function(rowList){
+Filter.prototype.filter = function(rowList, filters){
 	var self = this,
 	activeRows = [],
 	activeRowComponents = [];
@@ -541,7 +617,7 @@ Filter.prototype.filter = function(rowList){
 };
 
 //filter individual row
-Filter.prototype.filterRow = function(row){
+Filter.prototype.filterRow = function(row, filters){
 	var self = this,
 	match = true,
 	data = row.getData();
@@ -585,36 +661,36 @@ Filter.prototype.filterRecurse = function(filter, data){
 Filter.prototype.filters ={
 
 	//equal to
-	"=":function(filterVal, rowVal){
+	"=":function(filterVal, rowVal, rowData, filterParams){
 		return rowVal == filterVal ? true : false;
 	},
 
 	//less than
-	"<":function(filterVal, rowVal){
+	"<":function(filterVal, rowVal, rowData, filterParams){
 		return rowVal < filterVal ? true : false;
 	},
 
 	//less than or equal to
-	"<=":function(filterVal, rowVal){
+	"<=":function(filterVal, rowVal, rowData, filterParams){
 		return rowVal <= filterVal ? true : false;
 	},
 
 	//greater than
-	">":function(filterVal, rowVal){
+	">":function(filterVal, rowVal, rowData, filterParams){
 		return rowVal > filterVal ? true : false;
 	},
 
 	//greater than or equal to
-	">=":function(filterVal, rowVal){
+	">=":function(filterVal, rowVal, rowData, filterParams){
 		return rowVal >= filterVal ? true : false;
 	},
 
 	//not equal to
-	"!=":function(filterVal, rowVal){
+	"!=":function(filterVal, rowVal, rowData, filterParams){
 		return rowVal != filterVal ? true : false;
 	},
 
-	"regex":function(filterVal, rowVal){
+	"regex":function(filterVal, rowVal, rowData, filterParams){
 
 		if(typeof filterVal == "string"){
 			filterVal = new RegExp(filterVal);
@@ -624,7 +700,7 @@ Filter.prototype.filters ={
 	},
 
 	//contains the string
-	"like":function(filterVal, rowVal){
+	"like":function(filterVal, rowVal, rowData, filterParams){
 		if(filterVal === null || typeof filterVal === "undefined"){
 			return rowVal === filterVal ? true : false;
 		}else{
@@ -638,7 +714,7 @@ Filter.prototype.filters ={
 	},
 
 	//in array
-	"in":function(filterVal, rowVal){
+	"in":function(filterVal, rowVal, rowData, filterParams){
 		if(Array.isArray(filterVal)){
 			return filterVal.indexOf(rowVal) > -1;
 		}else{

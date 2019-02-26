@@ -3,16 +3,23 @@ var Download = function(table){
 	this.fields = {}; //hold filed multi dimension arrays
 	this.columnsByIndex = []; //hold columns in their order in the table
 	this.columnsByField = {}; //hold columns with lookup by field name
+	this.config = {};
 };
 
 //trigger file download
 Download.prototype.download = function(type, filename, options, interceptCallback){
 	var self = this,
 	downloadFunc = false;
+	this.processConfig();
 
 	function buildLink(data, mime){
 		if(interceptCallback){
-			interceptCallback(data);
+			if(interceptCallback === true){
+				self.triggerDownload(data, mime, type, filename, true);
+			}else{
+				interceptCallback(data);
+			}
+
 		}else{
 			self.triggerDownload(data, mime, type, filename);
 		}
@@ -31,7 +38,33 @@ Download.prototype.download = function(type, filename, options, interceptCallbac
 	this.processColumns();
 
 	if(downloadFunc){
-		downloadFunc.call(this, self.processDefinitions(), self.processData() , options || {}, buildLink);
+		downloadFunc.call(this, self.processDefinitions(), self.processData() , options || {}, buildLink, this.config);
+	}
+};
+
+Download.prototype.processConfig = function(){
+	var config = {	//download config
+		columnGroups:true,
+		rowGroups:true,
+		columnCalcs:true,
+	};
+
+	if(this.table.options.downloadConfig){
+		for(var key in this.table.options.downloadConfig){
+			config[key] = this.table.options.downloadConfig[key];
+		}
+	}
+
+	if (config.rowGroups && this.table.options.groupBy && this.table.modExists("groupRows")){
+		this.config.rowGroups = true;
+	}
+
+	if (config.columnGroups && this.table.columnManager.columns.length != this.table.columnManager.columnsByIndex.length){
+		this.config.columnGroups = true;
+	}
+
+	if (config.columnCalcs && this.table.modExists("columnCalcs")){
+		this.config.columnCalcs = true;
 	}
 };
 
@@ -43,7 +76,7 @@ Download.prototype.processColumns = function () {
 
 	self.table.columnManager.columnsByIndex.forEach(function (column) {
 
-		if (column.field && column.visible && column.definition.download !== false) {
+		if (column.field && column.definition.download !== false && (column.visible || (!column.visible && column.definition.download))) {
 			self.columnsByIndex.push(column);
 			self.columnsByField[column.field] = column;
 		}
@@ -54,31 +87,109 @@ Download.prototype.processDefinitions = function(){
 	var self = this,
 	processedDefinitions = [];
 
-	self.columnsByIndex.forEach(function(column){
-		var definition = column.definition;
+	if(this.config.columnGroups){
+		self.table.columnManager.columns.forEach(function(column){
+			var colData = self.processColumnGroup(column);
 
-		if(column.download !== false){
-			//isolate definiton from defintion object
-			var def = {};
-
-			for(var key in definition){
-				def[key] = definition[key];
+			if(colData){
+				processedDefinitions.push(colData);
 			}
-
-			if(typeof definition.downloadTitle != "undefined"){
-				def.title = definition.downloadTitle;
+		});
+	}else{
+		self.columnsByIndex.forEach(function(column){
+			if(column.download !== false){
+				//isolate definiton from defintion object
+				processedDefinitions.push(self.processDefinition(column));
 			}
-
-			processedDefinitions.push(def);
-		}
-	});
+		});
+	}
 
 	return  processedDefinitions;
 };
 
+Download.prototype.processColumnGroup = function(column){
+	var subGroups = column.columns,
+	maxDepth = 0;
+
+	var groupData = {
+		type:"group",
+		title:column.definition.title,
+		depth:1,
+	};
+
+
+	if(subGroups.length){
+		groupData.subGroups = [];
+		groupData.width = 0;
+
+		subGroups.forEach((subGroup) => {
+			var subGroupData = this.processColumnGroup(subGroup);
+
+			if(subGroupData.depth > maxDepth){
+				maxDepth = subGroupData.depth;
+			}
+
+			if(subGroupData){
+				groupData.width += subGroupData.width;
+				groupData.subGroups.push(subGroupData);
+			}
+		});
+
+		groupData.depth += maxDepth;
+
+		if(!groupData.width){
+			return false;
+		}
+	}else{
+		if(column.field && column.definition.download !== false && (column.visible || (!column.visible && column.definition.download))){
+			groupData.width = 1;
+			groupData.definition = this.processDefinition(column);
+		}else{
+			return false;
+		}
+	}
+
+	return groupData;
+};
+
+Download.prototype.processDefinition = function(column){
+	var def = {};
+
+	for(var key in column.definition){
+		def[key] = column.definition[key];
+	}
+
+	if(typeof column.definition.downloadTitle != "undefined"){
+		def.title = column.definition.downloadTitle;
+	}
+
+	return def;
+};
+
 Download.prototype.processData = function(){
 	var self = this,
-	data = self.table.rowManager.getData(true, "download");
+	data = [],
+	groups = [],
+	calcs =  {};
+
+	if(this.config.rowGroups){
+		groups = this.table.modules.groupRows.getGroups();
+
+		groups.forEach((group) => {
+			data.push(this.processGroupData(group));
+		});
+	}else{
+		data = self.table.rowManager.getData(true, "download");
+	}
+
+	if(this.config.columnCalcs){
+		calcs = this.table.getCalcResults();
+
+		data = {
+			calcs: calcs,
+			data: data,
+		};
+	}
 
 	//bulk data processing
 	if(typeof self.table.options.downloadDataFormatter == "function"){
@@ -88,7 +199,28 @@ Download.prototype.processData = function(){
 	return data;
 };
 
-Download.prototype.triggerDownload = function(data, mime, type, filename){
+Download.prototype.processGroupData = function(group){
+	var subGroups = group.getSubGroups();
+
+	var groupData = {
+		type:"group",
+		key:group.key
+	};
+
+	if(subGroups.length){
+		groupData.subGroups = [];
+
+		subGroups.forEach((subGroup) => {
+			groupData.subGroups.push(this.processGroupData(subGroup));
+		});
+	}else{
+		groupData.rows = group.getData(true, "download");
+	}
+
+	return groupData;
+};
+
+Download.prototype.triggerDownload = function(data, mime, type, filename, newTab){
 	var element = document.createElement('a'),
 	blob = new Blob([data],{type:mime}),
 	filename = filename || "Tabulator." + (typeof type === "function" ? "txt" : type);
@@ -97,21 +229,25 @@ Download.prototype.triggerDownload = function(data, mime, type, filename){
 
 	if(blob){
 
-		if(navigator.msSaveOrOpenBlob){
-			navigator.msSaveOrOpenBlob(blob, filename);
+		if(newTab){
+			window.open(window.URL.createObjectURL(blob));
 		}else{
-			element.setAttribute('href', window.URL.createObjectURL(blob));
+			if(navigator.msSaveOrOpenBlob){
+				navigator.msSaveOrOpenBlob(blob, filename);
+			}else{
+				element.setAttribute('href', window.URL.createObjectURL(blob));
 
-			//set file title
-			element.setAttribute('download', filename);
+				//set file title
+				element.setAttribute('download', filename);
 
-			//trigger download
-			element.style.display = 'none';
-			document.body.appendChild(element);
-			element.click();
+				//trigger download
+				element.style.display = 'none';
+				document.body.appendChild(element);
+				element.click();
 
-			//remove temporary link element
-			document.body.removeChild(element);
+				//remove temporary link element
+				document.body.removeChild(element);
+			}
 		}
 
 
@@ -145,108 +281,327 @@ Download.prototype.commsReceived = function(table, action, data){
 
 //downloaders
 Download.prototype.downloaders = {
-	csv:function(columns, data, options, setFileContents){
+	csv:function(columns, data, options, setFileContents, config){
 		var self = this,
 		titles = [],
 		fields = [],
 		delimiter = options && options.delimiter ? options.delimiter : ",",
-		fileContents;
+		fileContents, output;
 
-		//get field lists
-		columns.forEach(function(column){
-			if(column.field){
+		//build column headers
+		function parseSimpleTitles(){
+			columns.forEach(function(column){
 				titles.push('"' + String(column.title).split('"').join('""') + '"');
 				fields.push(column.field);
+			});
+		}
+
+		function parseColumnGroup(column, level){
+			if(column.subGroups){
+				column.subGroups.forEach(function(subGroup){
+					parseColumnGroup(subGroup, level+1);
+				});
+			}else{
+				titles.push('"' + String(column.title).split('"').join('""') + '"');
+				fields.push(column.definition.field);
 			}
-		})
+		}
+
+		if(config.columnGroups){
+			console.warn("Download Warning - CSV downloader cannot process column groups");
+
+			columns.forEach(function(column){
+				parseColumnGroup(column,0);
+			});
+		}else{
+			parseSimpleTitles();
+		}
+
 
 		//generate header row
 		fileContents = [titles.join(delimiter)];
 
-		//generate each row of the table
-		data.forEach(function(row){
-			var rowData = [];
+		function parseRows(data){
+			//generate each row of the table
+			data.forEach(function(row){
+				var rowData = [];
 
-			fields.forEach(function(field){
-				var value = self.getFieldValue(field, row);
+				fields.forEach(function(field){
+					var value = self.getFieldValue(field, row);
 
-				switch(typeof value){
-					case "object":
-					value = JSON.stringify(value);
-					break;
+					switch(typeof value){
+						case "object":
+						value = JSON.stringify(value);
+						break;
 
-					case "undefined":
-					case "null":
-					value = "";
-					break;
+						case "undefined":
+						case "null":
+						value = "";
+						break;
 
-					default:
-					value = value;
-				}
+						default:
+						value = value;
+					}
 
-				//escape uotation marks
-				rowData.push('"' + String(value).split('"').join('""') + '"');
-			})
+					//escape quotation marks
+					rowData.push('"' + String(value).split('"').join('""') + '"');
+				});
 
-			fileContents.push(rowData.join(delimiter));
-		});
+				fileContents.push(rowData.join(delimiter));
+			});
+		}
 
-		setFileContents(fileContents.join("\n"), "text/csv");
+		function parseGroup(group){
+			if(group.subGroups){
+				group.subGroups.forEach(function(subGroup){
+					parseGroup(subGroup);
+				});
+			}else{
+				parseRows(group.rows);
+			}
+		}
+
+		if(config.columnCalcs){
+			console.warn("Download Warning - CSV downloader cannot process column calculations");
+			data = data.data;
+		}
+
+		if(config.rowGroups){
+			console.warn("Download Warning - CSV downloader cannot process row groups");
+
+			data.forEach(function(group){
+				parseGroup(group);
+			});
+		}else{
+			parseRows(data);
+		}
+
+		output = fileContents.join("\n");
+
+		if(options.bom){
+			output = "\ufeff" + output;
+		}
+
+		setFileContents(output, "text/csv");
 	},
 
-	json:function(columns, data, options, setFileContents){
-		var fileContents = JSON.stringify(data, null, '\t');
+	json:function(columns, data, options, setFileContents, config){
+		var fileContents;
+
+		if(config.columnCalcs){
+			console.warn("Download Warning - CSV downloader cannot process column calculations");
+			data = data.data;
+		}
+
+		fileContents = JSON.stringify(data, null, '\t');
 
 		setFileContents(fileContents, "application/json");
 	},
 
-	pdf:function(columns, data, options, setFileContents){
+	pdf:function(columns, data, options, setFileContents, config){
 		var self = this,
 		fields = [],
 		header = [],
 		body = [],
+		calcs = {},
+		headerDepth = 1,
 		table = "",
 		autoTableParams = {},
-		title = options && options.title ? options.title : "",
-		orientation = options && options.orientation == "portrait" ? "p" : "l";
+		rowGroupStyles = options.rowGroupStyles || {
+			fontStyle: "bold",
+			fontSize: 12,
+			cellPadding: 6,
+			fillColor: 220,
+		},
+		rowCalcStyles = options.rowCalcStyles || {
+			fontStyle: "bold",
+			fontSize: 10,
+			cellPadding: 4,
+			fillColor: 232,
+		},
+		jsPDFParams = options.jsPDF || {},
+		title = options && options.title ? options.title : "";
+
+		if(config.columnCalcs){
+			calcs = data.calcs;
+			data = data.data;
+		}
+
+		if(!jsPDFParams.orientation){
+			jsPDFParams.orientation = options.orientation || "landscape";
+		}
+
+		if(!jsPDFParams.unit){
+			jsPDFParams.unit = "pt";
+		}
 
 		//build column headers
-		columns.forEach(function(column){
-			if(column.field){
-				header.push(column.title || "");
-				fields.push(column.field);
-			}
-		});
+		function parseSimpleTitles(){
+			columns.forEach(function(column){
+				if(column.field){
+					header.push(column.title || "");
+					fields.push(column.field);
+				}
+			});
 
-		//build table rows
-		data.forEach(function(row){
+			header = [header];
+		}
+
+		function parseColumnGroup(column, level){
+			var colSpan = column.width,
+			rowSpan = 1,
+			col = {
+				content:column.title || "",
+			};
+
+			if(column.subGroups){
+				column.subGroups.forEach(function(subGroup){
+					parseColumnGroup(subGroup, level+1);
+				});
+				rowSpan = 1;
+			}else{
+				fields.push(column.definition.field);
+				rowSpan = headerDepth - level;
+			}
+
+			col.rowSpan = rowSpan;
+			// col.colSpan = colSpan;
+
+			header[level].push(col);
+
+			colSpan--;
+
+			if(rowSpan > 1){
+				for(var i = level + 1; i < headerDepth; i++){
+					header[i].push("");
+				}
+			}
+
+			for(var i = 0; i < colSpan; i++){
+				header[level].push("");
+			}
+		}
+
+		if(config.columnGroups){
+			columns.forEach(function(column){
+				if(column.depth > headerDepth){
+					headerDepth = column.depth;
+				}
+			});
+
+			for(var i=0; i < headerDepth; i++){
+				header.push([]);
+			}
+
+			columns.forEach(function(column){
+				parseColumnGroup(column,0);
+			});
+
+		}else{
+			parseSimpleTitles();
+		}
+
+		function parseValue(value){
+			switch(typeof value){
+				case "object":
+				value = JSON.stringify(value);
+				break;
+
+				case "undefined":
+				case "null":
+				value = "";
+				break;
+
+				default:
+				value = value;
+			}
+
+			return value;
+		}
+
+		function parseRows(data){
+			//build table rows
+			data.forEach(function(row){
+				body.push(parseRow(row));
+			});
+		}
+
+		function parseRow(row, styles){
 			var rowData = [];
 
 			fields.forEach(function(field){
 				var value = self.getFieldValue(field, row);
+				value = parseValue(value);
 
-				switch(typeof value){
-					case "object":
-					value = JSON.stringify(value);
-					break;
-
-					case "undefined":
-					case "null":
-					value = "";
-					break;
-
-					default:
-					value = value;
+				if(styles){
+					rowData.push({
+						content:value,
+						styles:styles,
+					});
+				}else{
+					rowData.push(value);
 				}
-
-				rowData.push(value);
 			});
 
-			body.push(rowData);
-		});
+			return rowData;
+		}
 
+		function parseGroup(group, calcObj){
+			var groupData = [];
 
-		var doc = new jsPDF(orientation, 'pt'); //set document to landscape, better for most tables
+			groupData.push({content:parseValue(group.key), colSpan:fields.length, styles:rowGroupStyles});
+
+			body.push(groupData);
+
+			if(group.subGroups){
+				group.subGroups.forEach(function(subGroup){
+					parseGroup(subGroup,  calcObj[group.key] ? calcObj[group.key].groups || {} : {});
+				});
+			}else{
+
+				if(config.columnCalcs){
+					addCalcRow(calcObj, group.key, "top");
+				}
+
+				parseRows(group.rows);
+
+				if(config.columnCalcs){
+					addCalcRow(calcObj, group.key, "bottom");
+				}
+			}
+		}
+
+		function addCalcRow(calcs, selector, pos){
+			var calcData = calcs[selector];
+
+			if(calcData){
+				if(pos){
+					calcData = calcData[pos];
+				}
+
+				if(Object.keys(calcData).length){
+					body.push(parseRow(calcData, rowCalcStyles));
+				}
+			}
+		}
+
+		if(config.rowGroups){
+			data.forEach(function(group){
+				parseGroup(group, calcs);
+			});
+		}else{
+			if(config.columnCalcs){
+				addCalcRow(calcs, "top");
+			}
+
+			parseRows(data);
+
+			if(config.columnCalcs){
+				addCalcRow(calcs, "bottom");
+			}
+		}
+
+		var doc = new jsPDF(jsPDFParams); //set document to landscape, better for most tables
 
 		if(options && options.autoTable){
 			if(typeof options.autoTable === "function"){
@@ -259,19 +614,32 @@ Download.prototype.downloaders = {
 		if(title){
 			autoTableParams.addPageContent = function(data) {
 				doc.text(title, 40, 30);
-			}
+			};
 		}
 
-		doc.autoTable(header, body, autoTableParams);
+		autoTableParams.head = header;
+		autoTableParams.body = body;
+
+		doc.autoTable(autoTableParams);
 
 		setFileContents(doc.output("arraybuffer"), "application/pdf");
 	},
 
-	xlsx:function(columns, data, options, setFileContents){
+	xlsx:function(columns, data, options, setFileContents, config){
 		var self = this,
 		sheetName = options.sheetName || "Sheet1",
 		workbook = {SheetNames:[], Sheets:{}},
+		calcs = {},
+		groupRowIndexs = [],
+		groupColumnIndexs = [],
+		calcRowIndexs = [],
+
 		output;
+
+		if(config.columnCalcs){
+			calcs = data.calcs;
+			data = data.data;
+		}
 
 		function generateSheet(){
 			var titles = [],
@@ -288,36 +656,200 @@ Download.prototype.downloaders = {
 
 				sheet['!ref'] = XLSX.utils.encode_range(range);
 
+				var merges = generateMerges();
+
+				if(merges.length){
+					sheet["!merges"] = merges;
+				}
+
 				return sheet;
 			}
 
-			//get field lists
-			columns.forEach(function(column){
-				if(column.field){
+			function parseSimpleTitles(){
+				//get field lists
+				columns.forEach(function(column){
 					titles.push(column.title);
 					fields.push(column.field);
-				}
-			});
+				});
 
-			rows.push(titles);
+				rows.push(titles);
+			}
+
+			function parseColumnGroup(column, level){
+
+				if(typeof titles[level] === "undefined"){
+					titles[level] = [];
+				}
+
+				if(typeof groupColumnIndexs[level] === "undefined"){
+					groupColumnIndexs[level] = [];
+				}
+
+				if(column.width > 1){
+
+					groupColumnIndexs[level].push({
+						type:"hoz",
+						start:titles[level].length,
+						end:titles[level].length + column.width - 1,
+					});
+				}
+
+				titles[level].push(column.title);
+
+				if(column.subGroups){
+					column.subGroups.forEach(function(subGroup){
+						parseColumnGroup(subGroup, level+1);
+					});
+				}else{
+					fields.push(column.definition.field);
+					padColumnTitles(fields.length - 1, level);
+
+					groupColumnIndexs[level].push({
+						type:"vert",
+						start:fields.length - 1,
+					});
+
+				}
+			}
+
+
+			function padColumnTitles(){
+				var max = 0;
+
+				titles.forEach(function(title){
+					var len = title.length;
+					if(len > max){
+						max = len;
+					}
+				});
+
+				titles.forEach(function(title){
+					var len = title.length;
+					if(len < max){
+						for(var i = len; i < max; i++){
+							title.push("");
+						}
+					}
+				});
+			}
+
+			if(config.columnGroups){
+				columns.forEach(function(column){
+					parseColumnGroup(column,0);
+				});
+
+				titles.forEach(function(title){
+					rows.push(title);
+				});
+			}else{
+				parseSimpleTitles();
+			}
+
+			function generateMerges(){
+				var output = [];
+
+				groupRowIndexs.forEach(function(index){
+					output.push({s:{r:index,c:0},e:{r:index,c:fields.length - 1}});
+				});
+
+				groupColumnIndexs.forEach(function(merges, level){
+					merges.forEach(function(merge){
+						if(merge.type === "hoz"){
+							output.push({s:{r:level,c:merge.start},e:{r:level,c:merge.end}});
+						}else{
+							if(level != titles.length - 1){
+								output.push({s:{r:level,c:merge.start},e:{r:titles.length - 1,c:merge.start}});
+							}
+						}
+					});
+				});
+
+				return output;
+			}
 
 			//generate each row of the table
-			data.forEach(function(row){
+			function parseRows(data){
+				data.forEach(function(row){
+					rows.push(parseRow(row));
+				});
+			}
+
+			function parseRow(row){
 				var rowData = [];
 
 				fields.forEach(function(field){
-					rowData.push(self.getFieldValue(field, row));
+					var value = self.getFieldValue(field, row);
+					rowData.push(typeof value === "object" ? JSON.stringify(value) : value);
 				});
 
-				rows.push(rowData);
-			});
+				return rowData;
+			}
+
+
+			function addCalcRow(calcs, selector, pos){
+				var calcData = calcs[selector];
+
+				if(calcData){
+					if(pos){
+						calcData = calcData[pos];
+					}
+
+					if(Object.keys(calcData).length){
+						calcRowIndexs.push(rows.length);
+						rows.push(parseRow(calcData));
+					}
+				}
+			}
+
+			function parseGroup(group, calcObj){
+				var groupData = [];
+
+				groupData.push(group.key);
+
+				groupRowIndexs.push(rows.length);
+
+				rows.push(groupData);
+
+				if(group.subGroups){
+					group.subGroups.forEach(function(subGroup){
+						parseGroup(subGroup, calcObj[group.key] ? calcObj[group.key].groups || {} : {});
+					});
+				}else{
+
+					if(config.columnCalcs){
+						addCalcRow(calcObj, group.key, "top");
+					}
+
+					parseRows(group.rows);
+
+					if(config.columnCalcs){
+						addCalcRow(calcObj, group.key, "bottom");
+					}
+				}
+
+
+			}
+
+			if(config.rowGroups){
+				data.forEach(function(group){
+					parseGroup(group, calcs);
+				});
+			}else{
+				if(config.columnCalcs){
+					addCalcRow(calcs, "top");
+				}
+
+				parseRows(data);
+
+				if(config.columnCalcs){
+					addCalcRow(calcs, "bottom");
+				}
+			}
 
 			worksheet = rowsToSheet();
 
 			return worksheet;
-
 		}
-
 
 		if(options.sheetOnly){
 			setFileContents(generateSheet());
@@ -326,7 +858,6 @@ Download.prototype.downloaders = {
 
 		if(options.sheets){
 			for(var sheet in options.sheets){
-
 
 				if(options.sheets[sheet] === true){
 					workbook.SheetNames.push(sheet);
@@ -343,14 +874,11 @@ Download.prototype.downloaders = {
 						}
 					});
 				}
-
 			}
-
 		}else{
 			workbook.SheetNames.push(sheetName);
 			workbook.Sheets[sheetName] = generateSheet();
 		}
-
 
 		//convert workbook to binary array
 		function s2ab(s) {

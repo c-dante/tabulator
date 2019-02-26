@@ -1,6 +1,6 @@
 var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol" ? function (obj) { return typeof obj; } : function (obj) { return obj && typeof Symbol === "function" && obj.constructor === Symbol && obj !== Symbol.prototype ? "symbol" : typeof obj; };
 
-/* Tabulator v4.0.5 (c) Oliver Folkerd */
+/* Tabulator v4.2.1 (c) Oliver Folkerd */
 
 var Sort = function Sort(table) {
 	this.table = table; //hold Tabulator object
@@ -32,7 +32,8 @@ Sort.prototype.initializeColumn = function (column, content) {
 	column.modules.sort = {
 		sorter: sorter, dir: "none",
 		params: column.definition.sorterParams || {},
-		startingDir: column.definition.headerSortStartingDir || "asc"
+		startingDir: column.definition.headerSortStartingDir || "asc",
+		tristate: column.definition.headerSortTristate
 	};
 
 	if (column.definition.headerSort !== false) {
@@ -53,9 +54,32 @@ Sort.prototype.initializeColumn = function (column, content) {
 			    match = false;
 
 			if (column.modules.sort) {
-				dir = column.modules.sort.dir == "asc" ? "desc" : column.modules.sort.dir == "desc" ? "asc" : column.modules.sort.startingDir;
+				if (column.modules.sort.tristate) {
+					if (column.modules.sort.dir == "none") {
+						dir = column.modules.sort.startingDir;
+					} else {
+						if (column.modules.sort.dir == column.modules.sort.startingDir) {
+							dir = column.modules.sort.dir == "asc" ? "desc" : "asc";
+						} else {
+							dir = "none";
+						}
+					}
+				} else {
+					switch (column.modules.sort.dir) {
+						case "asc":
+							dir = "desc";
+							break;
 
-				if (e.shiftKey || e.ctrlKey) {
+						case "desc":
+							dir = "asc";
+							break;
+
+						default:
+							dir = column.modules.sort.startingDir;
+					}
+				}
+
+				if (self.table.options.columnHeaderSortMulti && (e.shiftKey || e.ctrlKey)) {
 					sorters = self.getSort();
 
 					match = sorters.findIndex(function (sorter) {
@@ -63,23 +87,32 @@ Sort.prototype.initializeColumn = function (column, content) {
 					});
 
 					if (match > -1) {
-						sorters[match].dir = sorters[match].dir == "asc" ? "desc" : "asc";
+						sorters[match].dir = dir;
 
 						if (match != sorters.length - 1) {
-							sorters.push(sorters.splice(match, 1)[0]);
+							match = sorters.splice(match, 1)[0];
+							if (dir != "none") {
+								sorters.push(match);
+							}
 						}
 					} else {
-						sorters.push({ column: column, dir: dir });
+						if (dir != "none") {
+							sorters.push({ column: column, dir: dir });
+						}
 					}
 
 					//add to existing sort
 					self.setSort(sorters);
 				} else {
-					//sort by column only
-					self.setSort(column, dir);
+					if (dir == "none") {
+						self.clear();
+					} else {
+						//sort by column only
+						self.setSort(column, dir);
+					}
 				}
 
-				self.table.rowManager.sorterRefresh();
+				self.table.rowManager.sorterRefresh(!self.sortList.length);
 			}
 		});
 	}
@@ -182,9 +215,12 @@ Sort.prototype.findSorter = function (column) {
 };
 
 //work through sort list sorting data
-Sort.prototype.sort = function () {
+Sort.prototype.sort = function (data) {
 	var self = this,
-	    lastSort;
+	    lastSort,
+	    sortList;
+
+	sortList = this.table.options.sortOrderReverse ? self.sortList.slice().reverse() : self.sortList;
 
 	if (self.table.options.dataSorting) {
 		self.table.options.dataSorting.call(self.table, self.getSort());
@@ -194,7 +230,7 @@ Sort.prototype.sort = function () {
 
 	if (!self.table.options.ajaxSorting) {
 
-		self.sortList.forEach(function (item, i) {
+		sortList.forEach(function (item, i) {
 
 			if (item.column && item.column.modules.sort) {
 
@@ -203,13 +239,13 @@ Sort.prototype.sort = function () {
 					item.column.modules.sort.sorter = self.findSorter(item.column);
 				}
 
-				self._sortItem(item.column, item.dir, self.sortList, i);
+				self._sortItem(data, item.column, item.dir, sortList, i);
 			}
 
 			self.setColumnHeader(item.column, item.dir);
 		});
 	} else {
-		self.sortList.forEach(function (item, i) {
+		sortList.forEach(function (item, i) {
 			self.setColumnHeader(item.column, item.dir);
 		});
 	}
@@ -236,14 +272,12 @@ Sort.prototype.setColumnHeader = function (column, dir) {
 };
 
 //sort each item in sort list
-Sort.prototype._sortItem = function (column, dir, sortList, i) {
+Sort.prototype._sortItem = function (data, column, dir, sortList, i) {
 	var self = this;
-
-	var activeRows = self.table.rowManager.activeRows;
 
 	var params = typeof column.modules.sort.params === "function" ? column.modules.sort.params(column.getComponent(), dir) : column.modules.sort.params;
 
-	activeRows.sort(function (a, b) {
+	data.sort(function (a, b) {
 
 		var result = self._sortRow(a, b, column, dir, params);
 
@@ -288,10 +322,12 @@ Sort.prototype.sorters = {
 	//sort numbers
 	number: function number(a, b, aRow, bRow, column, dir, params) {
 		var alignEmptyValues = params.alignEmptyValues;
+		var decimal = params.decimalSeparator || ".";
+		var thousand = params.thousandSeparator || ",";
 		var emptyAlign = 0;
 
-		a = parseFloat(String(a).replace(",", ""));
-		b = parseFloat(String(b).replace(",", ""));
+		a = parseFloat(String(a).split(thousand).join("").split(decimal).join("."));
+		b = parseFloat(String(b).split(thousand).join("").split(decimal).join("."));
 
 		//handle non numeric values
 		if (isNaN(a)) {
@@ -348,72 +384,27 @@ Sort.prototype.sorters = {
 
 	//sort date
 	date: function date(a, b, aRow, bRow, column, dir, params) {
-		var self = this;
-		var format = params.format || "DD/MM/YYYY";
-		var alignEmptyValues = params.alignEmptyValues;
-		var emptyAlign = 0;
-
-		if (typeof moment != "undefined") {
-			a = moment(a, format);
-			b = moment(b, format);
-
-			if (!a.isValid()) {
-				emptyAlign = !b.isValid() ? 0 : -1;
-			} else if (!b.isValid()) {
-				emptyAlign = 1;
-			} else {
-				//compare valid values
-				return a - b;
-			}
-
-			//fix empty values in position
-			if (alignEmptyValues === "top" && dir === "desc" || alignEmptyValues === "bottom" && dir === "asc") {
-				emptyAlign *= -1;
-			}
-
-			return emptyAlign;
-		} else {
-			console.error("Sort Error - 'date' sorter is dependant on moment.js");
+		if (!params.format) {
+			params.format = "DD/MM/YYYY";
 		}
+
+		return this.sorters.datetime.call(this, a, b, aRow, bRow, column, dir, params);
 	},
 
 	//sort hh:mm formatted times
 	time: function time(a, b, aRow, bRow, column, dir, params) {
-		var self = this;
-		var format = params.format || "hh:mm";
-		var alignEmptyValues = params.alignEmptyValues;
-		var emptyAlign = 0;
-
-		if (typeof moment != "undefined") {
-			a = moment(a, format);
-			b = moment(b, format);
-
-			if (!a.isValid()) {
-				emptyAlign = !b.isValid() ? 0 : -1;
-			} else if (!b.isValid()) {
-				emptyAlign = 1;
-			} else {
-				//compare valid values
-				return a - b;
-			}
-
-			//fix empty values in position
-			if (alignEmptyValues === "top" && dir === "desc" || alignEmptyValues === "bottom" && dir === "asc") {
-				emptyAlign *= -1;
-			}
-
-			return emptyAlign;
-		} else {
-			console.error("Sort Error - 'date' sorter is dependant on moment.js");
+		if (!params.format) {
+			params.format = "hh:mm";
 		}
+
+		return this.sorters.datetime.call(this, a, b, aRow, bRow, column, dir, params);
 	},
 
 	//sort datetime
 	datetime: function datetime(a, b, aRow, bRow, column, dir, params) {
-		var self = this;
-		var format = params.format || "DD/MM/YYYY hh:mm:ss";
-		var alignEmptyValues = params.alignEmptyValues;
-		var emptyAlign = 0;
+		var format = params.format || "DD/MM/YYYY hh:mm:ss",
+		    alignEmptyValues = params.alignEmptyValues,
+		    emptyAlign = 0;
 
 		if (typeof moment != "undefined") {
 			a = moment(a, format);
@@ -435,7 +426,7 @@ Sort.prototype.sorters = {
 
 			return emptyAlign;
 		} else {
-			console.error("Sort Error - 'date' sorter is dependant on moment.js");
+			console.error("Sort Error - 'datetime' sorter is dependant on moment.js");
 		}
 	},
 

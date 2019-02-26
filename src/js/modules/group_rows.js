@@ -15,23 +15,11 @@ GroupComponent.prototype.getElement = function(){
 };
 
 GroupComponent.prototype.getRows = function(){
-	var output = [];
-
-	this._group.rows.forEach(function(row){
-		output.push(row.getComponent());
-	});
-
-	return output;
+	return this._group.getRows(true);
 };
 
 GroupComponent.prototype.getSubGroups = function(){
-	var output = [];
-
-	this._group.groupList.forEach(function(child){
-		output.push(child.getComponent());
-	});
-
-	return output;
+	return this._group.getSubGroups(true);
 };
 
 GroupComponent.prototype.getParentGroup = function(){
@@ -59,7 +47,7 @@ GroupComponent.prototype._getSelf = function(){
 };
 
 GroupComponent.prototype.getTable = function(){
-	return this._group.table;
+	return this._group.groupManager.table;
 };
 
 //////////////////////////////////////////////////
@@ -93,6 +81,8 @@ var Group = function(groupManager, parent, level, key, field, generator, oldGrou
 
 	this.createElements();
 	this.addBindings();
+
+	this.createValueGroups();
 };
 
 Group.prototype.createElements = function(){
@@ -104,6 +94,20 @@ Group.prototype.createElements = function(){
 
 	this.arrowElement = document.createElement("div");
 	this.arrowElement.classList.add("tabulator-arrow");
+
+	//setup movable rows
+	if(this.groupManager.table.options.movableRows !== false && this.groupManager.table.modExists("moveRow")){
+		this.groupManager.table.modules.moveRow.initializeGroupHeader(this);
+	}
+};
+
+Group.prototype.createValueGroups = function(){
+	var level = this.level + 1;
+	if(this.groupManager.allowedValues && this.groupManager.allowedValues[level]){
+		this.groupManager.allowedValues[level].forEach((value) => {
+			this._createGroup(value, level);
+		});
+	}
 };
 
 Group.prototype.addBindings = function(){
@@ -206,23 +210,35 @@ Group.prototype.addBindings = function(){
 
 };
 
+
+Group.prototype._createGroup = function(groupID, level){
+	var groupKey = level + "_" + groupID;
+	var group = new Group(this.groupManager, this, level, groupID,  this.groupManager.groupIDLookups[level].field, this.groupManager.headerGenerator[level] || this.groupManager.headerGenerator[0], this.old ? this.old.groups[groupKey] : false);
+
+	this.groups[groupKey] = group;
+	this.groupList.push(group);
+};
+
 Group.prototype._addRowToGroup = function(row){
 
 	var level = this.level + 1;
 
 	if(this.hasSubGroups){
-		var groupID = this.groupManager.groupIDLookups[level].func(row.getData());
+		var groupID = this.groupManager.groupIDLookups[level].func(row.getData()),
+		groupKey = level + "_" + groupID;
 
-		if(!this.groups[groupID]){
-			var group = new Group(this.groupManager, this, level, groupID,  this.groupManager.groupIDLookups[level].field, this.groupManager.headerGenerator[level] || this.groupManager.headerGenerator[0], this.old ? this.old.groups[groupID] : false);
+		if(this.groupManager.allowedValues && this.groupManager.allowedValues[level]){
+			if(this.groups[groupKey]){
+				this.groups[groupKey].addRow(row);
+			}
+		}else{
+			if(!this.groups[groupKey]){
+				this._createGroup(groupID, level);
+			}
 
-			this.groups[groupID] = group;
-			this.groupList.push(group);
+			this.groups[groupKey].addRow(row);
 		}
-
-		this.groups[groupID].addRow(row);
 	}
-
 };
 
 Group.prototype._addRow = function(row){
@@ -288,7 +304,7 @@ Group.prototype.removeRow = function(row){
 		this.rows.splice(index, 1);
 	}
 
-	if(!this.rows.length){
+	if(!this.groupManager.table.options.groupValues && !this.rows.length){
 		if(this.parent){
 			this.parent.removeGroup(this);
 		}else{
@@ -305,10 +321,11 @@ Group.prototype.removeRow = function(row){
 };
 
 Group.prototype.removeGroup = function(group){
-	var index;
+	var groupKey = group.level + "_" + group.key,
+	index;
 
-	if(this.groups[group.key]){
-		delete this.groups[group.key];
+	if(this.groups[groupKey]){
+		delete this.groups[groupKey];
 
 		index = this.groupList.indexOf(group);
 
@@ -326,7 +343,7 @@ Group.prototype.removeGroup = function(group){
 	}
 };
 
-Group.prototype.getHeadersAndRows = function(){
+Group.prototype.getHeadersAndRows = function(noCalc){
 	var output = [];
 
 	output.push(this);
@@ -337,18 +354,27 @@ Group.prototype.getHeadersAndRows = function(){
 
 		if(this.groupList.length){
 			this.groupList.forEach(function(group){
-				output = output.concat(group.getHeadersAndRows());
+				output = output.concat(group.getHeadersAndRows(noCalc));
 			});
 
 		}else{
-			if(this.groupManager.table.options.columnCalcs != "table" && this.groupManager.table.modExists("columnCalcs") && this.groupManager.table.modules.columnCalcs.hasTopCalcs()){
+			if(!noCalc && this.groupManager.table.options.columnCalcs != "table" && this.groupManager.table.modExists("columnCalcs") && this.groupManager.table.modules.columnCalcs.hasTopCalcs()){
+				if(this.calcs.top){
+					this.calcs.top.detachElement();
+				}
+
 				this.calcs.top = this.groupManager.table.modules.columnCalcs.generateTopRow(this.rows);
 				output.push(this.calcs.top);
 			}
 
 			output = output.concat(this.rows);
 
-			if(this.groupManager.table.options.columnCalcs != "table" &&  this.groupManager.table.modExists("columnCalcs") && this.groupManager.table.modules.columnCalcs.hasBottomCalcs()){
+			if(!noCalc && this.groupManager.table.options.columnCalcs != "table" &&  this.groupManager.table.modExists("columnCalcs") && this.groupManager.table.modules.columnCalcs.hasBottomCalcs()){
+
+				if(this.calcs.bottom){
+					this.calcs.bottom.detachElement();
+				}
+
 				this.calcs.bottom = this.groupManager.table.modules.columnCalcs.generateBottomRow(this.rows);
 				output.push(this.calcs.bottom);
 			}
@@ -356,12 +382,18 @@ Group.prototype.getHeadersAndRows = function(){
 	}else{
 		if(!this.groupList.length && this.groupManager.table.options.columnCalcs != "table" && this.groupManager.table.options.groupClosedShowCalcs){
 			if(this.groupManager.table.modExists("columnCalcs")){
-				if(this.groupManager.table.modules.columnCalcs.hasTopCalcs()){
+				if(!noCalc && this.groupManager.table.modules.columnCalcs.hasTopCalcs()){
+					if(this.calcs.top){
+						this.calcs.top.detachElement();
+					}
 					this.calcs.top = this.groupManager.table.modules.columnCalcs.generateTopRow(this.rows);
 					output.push(this.calcs.top);
 				}
 
-				if(this.groupManager.table.modules.columnCalcs.hasBottomCalcs()){
+				if(!noCalc && this.groupManager.table.modules.columnCalcs.hasBottomCalcs()){
+					if(this.calcs.bottom){
+						this.calcs.bottom.detachElement();
+					}
 					this.calcs.bottom = this.groupManager.table.modules.columnCalcs.generateBottomRow(this.rows);
 					output.push(this.calcs.bottom);
 				}
@@ -372,11 +404,26 @@ Group.prototype.getHeadersAndRows = function(){
 	return output;
 };
 
-Group.prototype.getRows = function(){
+Group.prototype.getData = function(visible, transform){
+	var self = this,
+	output = [];
+
 	this._visSet();
 
-	return this.visible ? this.rows : [];
+	if(!visible || (visible && this.visible)){
+		this.rows.forEach(function(row){
+			output.push(row.getData(transform || "data"));
+		});
+	}
+
+	return output;
 };
+
+// Group.prototype.getRows = function(){
+// 	this._visSet();
+
+// 	return this.visible ? this.rows : [];
+// };
 
 Group.prototype.getRowCount = function(){
 	var count = 0;
@@ -409,23 +456,10 @@ Group.prototype.hide = function(){
 		if(this.groupList.length){
 			this.groupList.forEach(function(group){
 
-				var el;
-
-				if(group.calcs.top){
-					el = group.calcs.top.getElement();
-					el.parentNode.removeChild(el);
-				}
-
-				if(group.calcs.bottom){
-					el = group.calcs.bottom.getElement();
-					el.parentNode.removeChild(el);
-				}
-
 				var rows = group.getHeadersAndRows();
 
 				rows.forEach(function(row){
-					var rowEl = row.getElement();
-					rowEl.parentNode.removeChild(rowEl);
+					row.detachElement();
 				});
 			});
 
@@ -438,6 +472,7 @@ Group.prototype.hide = function(){
 
 		this.groupManager.table.rowManager.setDisplayRows(this.groupManager.updateGroupRows(), this.groupManager.getDisplayIndex());
 
+		this.groupManager.table.rowManager.checkClassicModeGroupHeaderWidth();
 	}else{
 		this.groupManager.updateGroupRows(true);
 	}
@@ -478,6 +513,8 @@ Group.prototype.show = function(){
 		}
 
 		this.groupManager.table.rowManager.setDisplayRows(this.groupManager.updateGroupRows(), this.groupManager.getDisplayIndex());
+
+		this.groupManager.table.rowManager.checkClassicModeGroupHeaderWidth();
 	}else{
 		this.groupManager.updateGroupRows(true);
 	}
@@ -519,6 +556,26 @@ Group.prototype.getRowGroup = function(row){
 	return match;
 };
 
+Group.prototype.getSubGroups = function(component){
+	var output = [];
+
+	this.groupList.forEach(function(child){
+		output.push(component ? child.getComponent() : child);
+	});
+
+	return output;
+};
+
+Group.prototype.getRows = function(compoment){
+	var output = [];
+
+	this.rows.forEach(function(row){
+		output.push(compoment ? row.getComponent() : row);
+	});
+
+	return output;
+};
+
 Group.prototype.generateGroupHeaderContents = function(){
 	var data = [];
 
@@ -546,22 +603,27 @@ Group.prototype.getElement = function(){
 
 	this._visSet();
 
-
 	if(this.visible){
 		this.element.classList.add("tabulator-group-visible");
 	}else{
 		this.element.classList.remove("tabulator-group-visible");
 	}
 
-	this.element.childNodes.forEach(function(child){
-		child.parentNode.removeChild(child);
-	});
+	for(var i = 0; i < this.element.childNodes.length; ++i){
+		this.element.childNodes[i].parentNode.removeChild(this.element.childNodes[i]);
+	}
 
 	this.generateGroupHeaderContents();
 
 	// this.addBindings();
 
 	return this.element;
+};
+
+Group.prototype.detachElement = function(){
+	if (this.element && this.element.parentNode){
+		this.element.parentNode.removeChild(this.element);
+	}
 };
 
 //normalize the height of elements in the row
@@ -628,6 +690,7 @@ var GroupRows = function(table){
 	this.startOpen = [function(){return false;}]; //starting state of group
 	this.headerGenerator = [function(){return "";}];
 	this.groupList = []; //ordered list of groups
+	this.allowedValues = false;
 	this.groups = {}; //hold row groups
 	this.displayIndex = 0; //index in display pipeline
 };
@@ -638,6 +701,8 @@ GroupRows.prototype.initialize = function(){
 	groupBy = self.table.options.groupBy,
 	startOpen = self.table.options.groupStartOpen,
 	groupHeader = self.table.options.groupHeader;
+
+	this.allowedValues = self.table.options.groupValues;
 
 	self.headerGenerator = [function(){return "";}];
 	this.startOpen = [function(){return false;}]; //starting state of group
@@ -677,7 +742,7 @@ GroupRows.prototype.initialize = function(){
 		groupBy = [groupBy];
 	}
 
-	groupBy.forEach(function(group){
+	groupBy.forEach(function(group, i){
 		var lookupFunc, column;
 
 		if(typeof group == "function"){
@@ -699,6 +764,7 @@ GroupRows.prototype.initialize = function(){
 		self.groupIDLookups.push({
 			field: typeof group === "function" ? false : group,
 			func:lookupFunc,
+			values:self.allowedValues ? self.allowedValues[i] : false,
 		});
 	});
 
@@ -743,7 +809,7 @@ GroupRows.prototype.getRows = function(rows){
 		this.generateGroups(rows);
 
 		if(this.table.options.dataGrouped){
-			this.table.options.dataGrouped.call(this.table, this.getGroups());
+			this.table.options.dataGrouped.call(this.table, this.getGroups(true));
 		}
 
 		return this.updateGroupRows();
@@ -754,14 +820,57 @@ GroupRows.prototype.getRows = function(rows){
 
 };
 
-GroupRows.prototype.getGroups = function(){
+GroupRows.prototype.getGroups = function(compoment){
 	var groupComponents = [];
 
 	this.groupList.forEach(function(group){
-		groupComponents.push(group.getComponent());
+		groupComponents.push(compoment ? group.getComponent() : group);
 	});
 
 	return groupComponents;
+};
+
+GroupRows.prototype.pullGroupListData = function(groupList) {
+	var self = this;
+	var groupListData = [];
+
+	groupList.forEach( function(group) {
+		var groupHeader = {};
+			groupHeader.level = 0;
+			groupHeader.rowCount = 0;
+			groupHeader.headerContent = "";
+		var childData = [];
+
+		if (group.hasSubGroups) {
+			childData = self.pullGroupListData(group.groupList);
+
+			groupHeader.level = group.level;
+			groupHeader.rowCount = childData.length - group.groupList.length; // data length minus number of sub-headers
+			groupHeader.headerContent = group.generator(group.key, groupHeader.rowCount, group.rows, group);
+
+			groupListData.push(groupHeader);
+			groupListData = groupListData.concat(childData);
+		}
+
+		else {
+			groupHeader.level = group.level;
+			groupHeader.headerContent = group.generator(group.key, group.rows.length, group.rows, group);
+			groupHeader.rowCount = group.getRows().length;
+
+			groupListData.push(groupHeader);
+
+			group.getRows().forEach( function(row) {
+				groupListData.push(row.getData("data"));
+			});
+		}
+	});
+
+	return groupListData
+};
+
+GroupRows.prototype.getGroupedData = function(){
+
+	return this.pullGroupListData(this.groupList);
 };
 
 GroupRows.prototype.getRowGroup = function(row){
@@ -789,29 +898,68 @@ GroupRows.prototype.generateGroups = function(rows){
 	self.groups = {};
 	self.groupList =[];
 
-	rows.forEach(function(row){
-		self.assignRowToGroup(row, oldGroups);
-	});
+	if(this.allowedValues && this.allowedValues[0]){
+		this.allowedValues[0].forEach(function(value){
+			self.createGroup(value, 0, oldGroups);
+		});
 
+		rows.forEach(function(row){
+			self.assignRowToExistingGroup(row, oldGroups);
+		});
+	}else{
+		rows.forEach(function(row){
+			self.assignRowToGroup(row, oldGroups);
+		});
+	}
+
+};
+
+GroupRows.prototype.createGroup = function(groupID, level, oldGroups){
+	var groupKey = level + "_" + groupID,
+	group;
+
+	oldGroups = oldGroups || [];
+
+	group = new Group(this, false, level, groupID, this.groupIDLookups[0].field, this.headerGenerator[0], oldGroups[groupKey]);
+
+	this.groups[groupKey] = group;
+	this.groupList.push(group);
 };
 
 GroupRows.prototype.assignRowToGroup = function(row, oldGroups){
 	var groupID = this.groupIDLookups[0].func(row.getData()),
-	newGroupNeeded = !this.groups[groupID];
+	groupKey = "0_" + groupID;
 
-	oldGroups = oldGroups || [];
-
-	if(newGroupNeeded){
-		var group = new Group(this, false, 0, groupID, this.groupIDLookups[0].field, this.headerGenerator[0], oldGroups[groupID]);
-
-		this.groups[groupID] = group;
-		this.groupList.push(group);
+	if(!this.groups[groupKey]){
+		this.createGroup(groupID, 0, oldGroups);
 	}
 
-	this.groups[groupID].addRow(row);
+	this.groups[groupKey].addRow(row);
+};
+
+GroupRows.prototype.assignRowToExistingGroup = function(row, oldGroups){
+	var groupID = this.groupIDLookups[0].func(row.getData()),
+	groupKey = "0_" + groupID;
+
+	if(this.groups[groupKey]){
+		this.groups[groupKey].addRow(row);
+	}
+};
+
+
+GroupRows.prototype.assignRowToGroup = function(row, oldGroups){
+	var groupID = this.groupIDLookups[0].func(row.getData()),
+	newGroupNeeded = !this.groups["0_" + groupID];
+
+	if(newGroupNeeded){
+		this.createGroup(groupID, 0, oldGroups);
+	}
+
+	this.groups["0_" + groupID].addRow(row);
 
 	return !newGroupNeeded;
 };
+
 
 
 GroupRows.prototype.updateGroupRows = function(force){
@@ -845,10 +993,11 @@ GroupRows.prototype.scrollHeaders = function(left){
 };
 
 GroupRows.prototype.removeGroup = function(group){
-	var index;
+	var groupKey = group.level + "_" + group.key,
+	index;
 
-	if(this.groups[group.key]){
-		delete this.groups[group.key];
+	if(this.groups[groupKey]){
+		delete this.groups[groupKey];
 
 		index = this.groupList.indexOf(group);
 

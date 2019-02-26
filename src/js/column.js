@@ -110,6 +110,14 @@ ColumnComponent.prototype.setHeaderFilterValue = function(value){
 	}
 };
 
+ColumnComponent.prototype.getNextColumn = function(){
+	return this._column.nextColumn().getComponent();
+};
+
+ColumnComponent.prototype.getPrevColumn = function(){
+	return this._column.prevColumn().getComponent();
+};
+
 
 
 var Column = function(def, parent){
@@ -145,11 +153,18 @@ var Column = function(def, parent){
 		cellContext:false,
 		cellTap:false,
 		cellDblTap:false,
-		cellTapHold:false
+		cellTapHold:false,
+		cellMouseEnter:false,
+		cellMouseLeave:false,
+		cellMouseOver:false,
+		cellMouseOut:false,
+		cellMouseMove:false,
 	};
 
 	this.width = null; //column width
+	this.widthStyled = ""; //column width prestyled to improve render efficiency
 	this.minWidth = null; //column minimum width
+	this.minWidthStyled = ""; //column minimum prestyled to improve render efficiency
 	this.widthFixed = false; //user has specified a width for this column
 
 	this.visible = true; //default visible state
@@ -196,7 +211,7 @@ Column.prototype.createGroupElement = function (){
 
 Column.prototype.setField = function(field){
 	this.field = field;
-	this.fieldStructure = field ? field.split(".") : [];
+	this.fieldStructure = field ? (this.table.options.nestedFieldSeparator ? field.split(this.table.options.nestedFieldSeparator) : [field]) : [];
 	this.getFieldValue = this.fieldStructure.length > 1 ? this._getNestedData : this._getFlatData;
 	this.setFieldValue = this.fieldStructure.length > 1 ? this._setNesteData : this._setFlatData;
 };
@@ -262,6 +277,14 @@ Column.prototype._buildHeader = function(){
 	def = self.definition;
 
 	while(self.element.firstChild) self.element.removeChild(self.element.firstChild);
+
+	if(def.headerVertical){
+		self.element.classList.add("tabulator-col-vertical");
+
+		if(def.headerVertical === "flip"){
+			self.element.classList.add("tabulator-col-vertical-flip");
+		}
+	}
 
 	self.contentElement = self._bindEvents();
 
@@ -405,6 +428,27 @@ Column.prototype._bindEvents = function(){
 		self.cellEvents.cellContext = def.cellContext;
 	}
 
+	//store column mouse event bindings
+	if(typeof(def.cellMouseEnter) == "function"){
+		self.cellEvents.cellMouseEnter = def.cellMouseEnter;
+	}
+
+	if(typeof(def.cellMouseLeave) == "function"){
+		self.cellEvents.cellMouseLeave = def.cellMouseLeave;
+	}
+
+	if(typeof(def.cellMouseOver) == "function"){
+		self.cellEvents.cellMouseOver = def.cellMouseOver;
+	}
+
+	if(typeof(def.cellMouseOut) == "function"){
+		self.cellEvents.cellMouseOut = def.cellMouseOut;
+	}
+
+	if(typeof(def.cellMouseMove) == "function"){
+		self.cellEvents.cellMouseMove = def.cellMouseMove;
+	}
+
 	//setup column cell tap event bindings
 	if(typeof(def.cellTap) == "function"){
 		self.cellEvents.cellTap = def.cellTap;
@@ -486,7 +530,10 @@ Column.prototype._buildColumnHeader = function(){
 
 	//asign additional css classes to column header
 	if(def.cssClass){
-		self.element.classList.add(def.cssClass);
+		var classeNames = def.cssClass.split(" ");
+		classeNames.forEach(function(className) {
+			self.element.classList.add(className)
+		});
 	}
 
 	if(def.field){
@@ -494,7 +541,7 @@ Column.prototype._buildColumnHeader = function(){
 	}
 
 	//set min width if present
-	self.setMinWidth(typeof def.minWidth == "undefined" ? self.table.options.columnMinWidth : def.minWidth);
+	self.setMinWidth(typeof def.minWidth == "undefined" ? self.table.options.columnMinWidth : parseInt(def.minWidth));
 
 	self.reinitializeWidth();
 
@@ -587,7 +634,22 @@ Column.prototype._formatColumnHeaderTitle = function(el, title){
 
 		contents = formatter.call(this.table.modules.format, mockCell, params);
 
-		el.appendChild(contents);
+		switch(typeof contents){
+			case "object":
+			if(contents instanceof Node){
+				this.element.appendChild(contents);
+			}else{
+				this.element.innerHTML = "";
+				console.warn("Format Error - Title formatter has returned a type of object, the only valid formatter object return is an instance of Node, the formatter returned:", contents);
+			}
+			break;
+			case "undefined":
+			case "null":
+			this.element.innerHTML = "";
+			break;
+			default:
+			this.element.innerHTML = contents;
+		}
 	}else{
 		el.innerHTML = title;
 	}
@@ -631,7 +693,9 @@ Column.prototype._getNestedData = function(data){
 
 //flat field set
 Column.prototype._setFlatData = function(data, value){
-	data[this.field] = value;
+	if(this.field){
+		data[this.field] = value;
+	}
 };
 
 //nested field set
@@ -699,6 +763,7 @@ Column.prototype.clearVerticalAlign = function(){
 	this.element.style.paddingTop = "";
 	this.element.style.height = "";
 	this.element.style.minHeight = "";
+	this.groupElement.style.minHeight = "";
 
 	this.columns.forEach(function(column){
 		column.clearVerticalAlign();
@@ -809,8 +874,6 @@ Column.prototype.show = function(silent, responsiveToggle){
 
 		this.element.style.display = "";
 
-		this.table.columnManager._verticalAlignHeaders();
-
 		if(this.parent.isGroup){
 			this.parent.checkColumnVisibility();
 		}
@@ -818,6 +881,12 @@ Column.prototype.show = function(silent, responsiveToggle){
 		this.cells.forEach(function(cell){
 			cell.show();
 		});
+
+		if(!this.isGroup && this.width === null){
+			this.reinitializeWidth();
+		}
+
+		this.table.columnManager._verticalAlignHeaders();
 
 		if(this.table.options.persistentLayout && this.table.modExists("responsiveLayout", true)){
 			this.table.modules.persistence.save("columns");
@@ -890,12 +959,13 @@ Column.prototype.setWidthActual = function(width){
 	width = Math.max(this.minWidth, width);
 
 	this.width = width;
+	this.widthStyled = width ? width + "px" : "";
 
-	this.element.style.width = width ? width + "px" : "";
+	this.element.style.width = this.widthStyled;
 
 	if(!this.isGroup){
 		this.cells.forEach(function(cell){
-			cell.setWidth(width);
+			cell.setWidth();
 		});
 	}
 
@@ -944,11 +1014,12 @@ Column.prototype.getHeight = function(){
 
 Column.prototype.setMinWidth = function(minWidth){
 	this.minWidth = minWidth;
+	this.minWidthStyled = minWidth ? minWidth + "px" : "";
 
-	this.element.style.minWidth = minWidth ? minWidth + "px" : "";
+	this.element.style.minWidth = this.minWidthStyled;
 
 	this.cells.forEach(function(cell){
-		cell.setMinWidth(minWidth);
+		cell.setMinWidth();
 	});
 };
 
@@ -983,6 +1054,16 @@ Column.prototype.generateCell = function(row){
 	return cell;
 };
 
+Column.prototype.nextColumn = function(){
+	var index = this.table.columnManager.findColumnIndex(this);
+	return index > -1 ? this.table.columnManager.getColumnByIndex(index + 1) : false;
+};
+
+Column.prototype.prevColumn = function(){
+	var index = this.table.columnManager.findColumnIndex(this);
+	return index > -1 ? this.table.columnManager.getColumnByIndex(index - 1) : false;
+};
+
 Column.prototype.reinitializeWidth = function(force){
 
 	this.widthFixed = false;
@@ -1010,10 +1091,10 @@ Column.prototype.fitToData = function(){
 	var self = this;
 
 	if(!this.widthFixed){
-		this.element.width = "";
+		this.element.style.width = "";
 
 		self.cells.forEach(function(cell){
-			cell.setWidth("");
+			cell.clearWidth();
 		});
 	}
 
@@ -1042,6 +1123,94 @@ Column.prototype.deleteCell = function(cell){
 		this.cells.splice(index, 1);
 	}
 };
+
+Column.prototype.defaultOptionList = [
+	"title",
+	"field",
+	"visible",
+	"align",
+	"width",
+	"minWidth",
+	"widthGrow",
+	"widthShrink",
+	"resizable",
+	"frozen",
+	"responsive",
+	"tooltip",
+	"cssClass",
+	"rowHandle",
+	"hideInHtml",
+	"sorter",
+	"sorterParams",
+	"formatter",
+	"formatterParams",
+	"variableHeight",
+	"editable",
+	"editor",
+	"editorParams",
+	"validator",
+	"mutator",
+	"mutatorParams",
+	"mutatorData",
+	"mutatorDataParams",
+	"mutatorEdit",
+	"mutatorEditParams",
+	"mutatorClipboard",
+	"mutatorClipboardParams",
+	"accessor",
+	"accessorParams",
+	"accessorData",
+	"accessorDataParams",
+	"accessorDownload",
+	"accessorDownloadParams",
+	"accessorClipboard",
+	"accessorClipboardParams",
+	"download",
+	"downloadTitle",
+	"topCalc",
+	"topCalcParams",
+	"topCalcFormatter",
+	"topCalcFormatterParams",
+	"bottomCalc",
+	"bottomCalcParams",
+	"bottomCalcFormatter",
+	"bottomCalcFormatterParams",
+	"cellClick",
+	"cellDblClick",
+	"cellContext",
+	"cellTap",
+	"cellDblTap",
+	"cellTapHold",
+	"cellMouseEnter",
+	"cellMouseLeave",
+	"cellMouseOver",
+	"cellMouseOut",
+	"cellMouseMove",
+	"cellEditing",
+	"cellEdited",
+	"cellEditCancelled",
+	"headerSort",
+	"headerSortStartingDir",
+	"headerSortTristate",
+	"headerClick",
+	"headerDblClick",
+	"headerContext",
+	"headerTap",
+	"headerDblTap",
+	"headerTapHold",
+	"headerTooltip",
+	"headerVertical",
+	"editableTitle",
+	"titleFormatter",
+	"titleFormatterParams",
+	"headerFilter",
+	"headerFilterPlaceholder",
+	"headerFilterParams",
+	"headerFilterEmptyCheck",
+	"headerFilterFunc",
+	"headerFilterFuncParams",
+	"headerFilterLiveFilter",
+];
 
 //////////////// Event Bindings /////////////////
 

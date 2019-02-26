@@ -1,6 +1,6 @@
 var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol" ? function (obj) { return typeof obj; } : function (obj) { return obj && typeof Symbol === "function" && obj.constructor === Symbol && obj !== Symbol.prototype ? "symbol" : typeof obj; };
 
-/* Tabulator v4.0.5 (c) Oliver Folkerd */
+/* Tabulator v4.2.1 (c) Oliver Folkerd */
 
 var Ajax = function Ajax(table) {
 
@@ -24,10 +24,18 @@ var Ajax = function Ajax(table) {
 
 //initialize setup options
 Ajax.prototype.initialize = function () {
+	var template;
+
 	this.loaderElement.appendChild(this.msgElement);
 
 	if (this.table.options.ajaxLoaderLoading) {
-		this.loadingElement = this.table.options.ajaxLoaderLoading;
+		if (typeof this.table.options.ajaxLoaderLoading == "string") {
+			template = document.createElement('template');
+			template.innerHTML = this.table.options.ajaxLoaderLoading.trim();
+			this.loadingElement = template.content.firstChild;
+		} else {
+			this.loadingElement = this.table.options.ajaxLoaderLoading;
+		}
 	}
 
 	this.loaderPromise = this.table.options.ajaxRequestFunc || this.defaultLoaderPromise;
@@ -153,7 +161,7 @@ Ajax.prototype.nextPage = function (diff) {
 		margin = this.table.options.ajaxProgressiveLoadScrollMargin || this.table.rowManager.getElement().clientHeight * 2;
 
 		if (diff < margin) {
-			this.table.modules.page.nextPage();
+			this.table.modules.page.nextPage().then(function () {}).catch(function () {});
 		}
 	}
 };
@@ -172,10 +180,13 @@ Ajax.prototype._loadDataStandard = function (inPosition) {
 
 	return new Promise(function (resolve, reject) {
 		_this.sendRequest(inPosition).then(function (data) {
-			_this.table.rowManager.setData(data, inPosition);
-			resolve();
+			_this.table.rowManager.setData(data, inPosition).then(function () {
+				resolve();
+			}).catch(function (e) {
+				reject(e);
+			});
 		}).catch(function (e) {
-			reject();
+			reject(e);
 		});
 	});
 };
@@ -210,17 +221,6 @@ Ajax.prototype.serializeParams = function (params) {
 	});
 
 	return encoded.join("&");
-};
-
-Ajax.prototype.formDataParams = function (params) {
-	var output = this.generateParamsList(params),
-	    form = new FormData();
-
-	output.forEach(function (item) {
-		form.append(item.key, item.value);
-	});
-
-	return form;
 };
 
 //send ajax request
@@ -331,11 +331,13 @@ Ajax.prototype.defaultConfig = {
 };
 
 Ajax.prototype.defaultURLGenerator = function (url, config, params) {
-	if (params) {
-		if (!config.method || config.method.toLowerCase() == "get") {
-			url += "?" + this.serializeParams(params);
-		} else {
-			config.body = this.formDataParams(params);
+
+	if (url) {
+		if (params && Object.keys(params).length) {
+			if (!config.method || config.method.toLowerCase() == "get") {
+				config.method = "get";
+				url += "?" + this.serializeParams(params);
+			}
 		}
 	}
 
@@ -343,14 +345,70 @@ Ajax.prototype.defaultURLGenerator = function (url, config, params) {
 };
 
 Ajax.prototype.defaultLoaderPromise = function (url, config, params) {
-	var self = this;
+	var self = this,
+	    contentType;
 
 	return new Promise(function (resolve, reject) {
 
+		//set url
 		url = self.urlGenerator(url, config, params);
+
+		//set body content if not GET request
+		if (config.method.toUpperCase() != "GET") {
+			contentType = _typeof(self.table.options.ajaxContentType) === "object" ? self.table.options.ajaxContentType : self.contentTypeFormatters[self.table.options.ajaxContentType];
+			if (contentType) {
+
+				for (var key in contentType.headers) {
+					if (!config.headers) {
+						config.headers = {};
+					}
+
+					if (typeof config.headers[key] === "undefined") {
+						config.headers[key] = contentType.headers[key];
+					}
+				}
+
+				config.body = contentType.body.call(self, url, config, params);
+			} else {
+				console.warn("Ajax Error - Invalid ajaxContentType value:", self.table.options.ajaxContentType);
+			}
+		}
 
 		if (url) {
 
+			//configure headers
+			if (typeof config.headers === "undefined") {
+				config.headers = {};
+			}
+
+			if (typeof config.headers.Accept === "undefined") {
+				config.headers.Accept = "application/json";
+			}
+
+			if (typeof config.headers["X-Requested-With"] === "undefined") {
+				config.headers["X-Requested-With"] = "XMLHttpRequest";
+			}
+
+			if (typeof config.mode === "undefined") {
+				config.mode = "cors";
+			}
+
+			if (config.mode == "cors") {
+
+				if (typeof config.headers["Access-Control-Allow-Origin"] === "undefined") {
+					config.headers["Access-Control-Allow-Origin"] = window.location.origin;
+				}
+
+				if (typeof config.credentials === "undefined") {
+					config.credentials = 'same-origin';
+				}
+			} else {
+				if (typeof config.credentials === "undefined") {
+					config.credentials = 'include';
+				}
+			}
+
+			//send request
 			fetch(url, config).then(function (response) {
 				if (response.ok) {
 					response.json().then(function (data) {
@@ -368,9 +426,34 @@ Ajax.prototype.defaultLoaderPromise = function (url, config, params) {
 				reject(error);
 			});
 		} else {
-			reject("No URL Set");
+			console.warn("Ajax Load Error - No URL Set");
+			resolve([]);
 		}
 	});
+};
+
+Ajax.prototype.contentTypeFormatters = {
+	"json": {
+		headers: {
+			'Content-Type': 'application/json'
+		},
+		body: function body(url, config, params) {
+			return JSON.stringify(params);
+		}
+	},
+	"form": {
+		headers: {},
+		body: function body(url, config, params) {
+			var output = this.generateParamsList(params),
+			    form = new FormData();
+
+			output.forEach(function (item) {
+				form.append(item.key, item.value);
+			});
+
+			return form;
+		}
+	}
 };
 
 Tabulator.prototype.registerModule("ajax", Ajax);

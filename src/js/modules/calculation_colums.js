@@ -221,7 +221,17 @@ ColumnCalcs.prototype.rowsToData = function(rows){
 ColumnCalcs.prototype.generateRow = function(pos, data){
 	var self = this,
 	rowData = this.generateRowData(pos, data),
+	row;
+
+	if(self.table.modExists("mutator")){
+		self.table.modules.mutator.disable();
+	}
+
 	row = new Row(rowData, this);
+
+	if(self.table.modExists("mutator")){
+		self.table.modules.mutator.enable();
+	}
 
 	row.getElement().classList.add("tabulator-calcs", "tabulator-calcs-" + pos);
 	row.type = "calc";
@@ -250,10 +260,13 @@ ColumnCalcs.prototype.generateRow = function(pos, data){
 					};
 				}
 
+				//ensure css class defintion is replicated to calculation cell
+				self.genColumn.definition.cssClass = column.definition.cssClass;
+
 				//generate cell and assign to correct column
 				var cell = new Cell(self.genColumn, row);
 				cell.column = column;
-				cell.setWidth(column.width);
+				cell.setWidth();
 
 				column.cells.push(cell);
 				cells.push(cell);
@@ -316,7 +329,7 @@ ColumnCalcs.prototype.getResults = function(){
 	groups;
 
 	if(this.table.options.groupBy && this.table.modExists("groupRows")){
-		groups = this.table.modules.groupRows.getGroups();
+		groups = this.table.modules.groupRows.getGroups(true);
 
 		groups.forEach(function(group){
 			results[group.getKey()] = self.getGroupResults(group);

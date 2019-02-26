@@ -2,6 +2,7 @@
 /*=include modules/ajax.js */
 /*=include modules/calculation_colums.js */
 /*=include modules/clipboard.js */
+/*=include modules/data_tree.js */
 /*=include modules/download.js */
 /*=include modules/edit.js */
 /*=include modules/filter.js */
@@ -11,12 +12,13 @@
 /*=include modules/group_rows.js */
 /*=include modules/history.js */
 /*=include modules/html_table_import.js */
-/*=include modules/Keybindings.js */
+/*=include modules/keybindings.js */
 /*=include modules/moveable_columns.js */
 /*=include modules/moveable_rows.js */
 /*=include modules/mutator.js */
 /*=include modules/page.js */
 /*=include modules/persistence.js */
+/*=include modules/reactive_data.js */
 /*=include modules/resize_columns.js */
 /*=include modules/resize_rows.js */
 /*=include modules/resize_table.js */

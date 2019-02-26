@@ -43,6 +43,16 @@ RowComponent.prototype.scrollTo = function(){
 	return this._row.table.rowManager.scrollToRow(this._row);
 };
 
+RowComponent.prototype.pageTo = function(){
+	if(this._row.table.modExists("page", true)){
+		return this._row.table.modules.page.setPageToRow(this._row);
+	}
+};
+
+RowComponent.prototype.move = function(to, after){
+	this._row.moveToRow(to, after);
+};
+
 RowComponent.prototype.update = function(data){
 	return this._row.updateData(data);
 };
@@ -83,6 +93,40 @@ RowComponent.prototype.unfreeze = function(){
 	}
 };
 
+RowComponent.prototype.treeCollapse = function(){
+	if(this._row.table.modExists("dataTree", true)){
+		this._row.table.modules.dataTree.collapseRow(this._row);
+	}
+};
+
+RowComponent.prototype.treeExpand = function(){
+	if(this._row.table.modExists("dataTree", true)){
+		this._row.table.modules.dataTree.expandRow(this._row);
+	}
+};
+
+RowComponent.prototype.treeToggle = function(){
+	if(this._row.table.modExists("dataTree", true)){
+		this._row.table.modules.dataTree.toggleRow(this._row);
+	}
+};
+
+RowComponent.prototype.getTreeParent = function(){
+	if(this._row.table.modExists("dataTree", true)){
+		return this._row.table.modules.dataTree.getTreeParent(this._row);
+	}
+
+	return false;
+};
+
+RowComponent.prototype.getTreeChildren = function(){
+	if(this._row.table.modExists("dataTree", true)){
+		return this._row.table.modules.dataTree.getTreeChildren(this._row);
+	}
+
+	return false;
+};
+
 RowComponent.prototype.reformat = function(){
 	return this._row.reinitialize();
 };
@@ -95,6 +139,16 @@ RowComponent.prototype.getTable = function(){
 	return this._row.table;
 };
 
+RowComponent.prototype.getNextRow = function(){
+	var row = this._row.nextRow();
+	return row ? row.getComponent() : row;
+};
+
+RowComponent.prototype.getPrevRow = function(){
+	var row = this._row.prevRow();
+	return row ? row.getComponent() : row;
+};
+
 
 var Row = function(data, parent){
 	this.table = parent.table;
@@ -105,6 +159,7 @@ var Row = function(data, parent){
 	this.modules = {}; //hold module variables;
 	this.cells = [];
 	this.height = 0; //hold element height
+	this.heightStyled = ""; //hold element height prestyled to improve render efficiency
 	this.outerHeight = 0; //holde lements outer height
 	this.initialized = false; //element has been rendered
 	this.heightInitialized = false; //element has resized cells to fit
@@ -126,6 +181,11 @@ Row.prototype.getElement = function(){
 	return this.element;
 };
 
+Row.prototype.detachElement = function(){
+	if (this.element && this.element.parentNode){
+		this.element.parentNode.removeChild(this.element);
+	}
+};
 
 Row.prototype.generateElement = function(){
 	var self = this,
@@ -139,6 +199,11 @@ Row.prototype.generateElement = function(){
 	//setup movable rows
 	if(self.table.options.movableRows !== false && self.table.modExists("moveRow")){
 		self.table.modules.moveRow.initializeRow(this);
+	}
+
+	//setup data tree
+	if(self.table.options.dataTree !== false && self.table.modExists("dataTree")){
+		self.table.modules.dataTree.initializeRow(this);
 	}
 
 	//handle row click events
@@ -159,6 +224,39 @@ Row.prototype.generateElement = function(){
 			self.table.options.rowContext(e, self.getComponent());
 		});
 	}
+
+
+	//handle mouse events
+	if (self.table.options.rowMouseEnter){
+		self.element.addEventListener("mouseenter", function(e){
+			self.table.options.rowMouseEnter(e, self.getComponent());
+		});
+	}
+
+	if (self.table.options.rowMouseLeave){
+		self.element.addEventListener("mouseleave", function(e){
+			self.table.options.rowMouseLeave(e, self.getComponent());
+		});
+	}
+
+	if (self.table.options.rowMouseOver){
+		self.element.addEventListener("mouseover", function(e){
+			self.table.options.rowMouseOver(e, self.getComponent());
+		});
+	}
+
+	if (self.table.options.rowMouseOut){
+		self.element.addEventListener("mouseout", function(e){
+			self.table.options.rowMouseOut(e, self.getComponent());
+		});
+	}
+
+	if (self.table.options.rowMouseMove){
+		self.element.addEventListener("mousemove", function(e){
+			self.table.options.rowMouseMove(e, self.getComponent());
+		});
+	}
+
 
 	if (self.table.options.rowTap){
 
@@ -254,6 +352,11 @@ Row.prototype.initialize = function(force){
 		}
 
 		//setup movable rows
+		if(self.table.options.dataTree && self.table.modExists("dataTree")){
+			self.table.modules.dataTree.layoutRow(this);
+		}
+
+		//setup movable rows
 		if(self.table.options.responsiveLayout === "collapse" && self.table.modExists("responsiveLayout")){
 			self.table.modules.responsiveLayout.layoutRow(this);
 		}
@@ -284,6 +387,7 @@ Row.prototype.reinitialize = function(){
 	this.initialized = false;
 	this.heightInitialized = false;
 	this.height = 0;
+	this.heightStyled = "";
 
 	if(this.element.offsetParent !== null){
 		this.initialize(true);
@@ -304,15 +408,14 @@ Row.prototype.calcHeight = function(){
 	});
 
 	this.height = Math.max(maxHeight, minHeight);
+	this.heightStyled = this.height ? this.height + "px" : "";
 	this.outerHeight = this.element.offsetHeight;
 };
 
 //set of cells
 Row.prototype.setCellHeight = function(){
-	var height = this.height;
-
 	this.cells.forEach(function(cell){
-		cell.setHeight(height);
+		cell.setHeight();
 	});
 
 	this.heightInitialized = true;
@@ -320,7 +423,6 @@ Row.prototype.setCellHeight = function(){
 
 Row.prototype.clearCellHeight = function(){
 	this.cells.forEach(function(cell){
-
 		cell.clearHeight();
 	});
 };
@@ -337,17 +439,18 @@ Row.prototype.normalizeHeight = function(force){
 	this.setCellHeight();
 };
 
-Row.prototype.setHeight = function(height){
-	this.height = height;
+// Row.prototype.setHeight = function(height){
+// 	this.height = height;
 
-	this.setCellHeight();
-};
+// 	this.setCellHeight();
+// };
 
 //set height of rows
 Row.prototype.setHeight = function(height, force){
 	if(this.height != height || force){
 
 		this.height = height;
+		this.heightStyled = height ? height + "px" : "";
 
 		this.setCellHeight();
 
@@ -380,23 +483,30 @@ Row.prototype.deleteCell = function(cell){
 //////////////// Data Management /////////////////
 
 Row.prototype.setData = function(data){
-	var self = this;
+	if(this.table.modExists("mutator")){
+		data = this.table.modules.mutator.transformRow(data, "data");
+	}
 
-	if(self.table.modExists("mutator")){
-		self.data = self.table.modules.mutator.transformRow(data, "data");
-	}else{
-		self.data = data;
+	this.data = data;
+
+	if(this.table.options.reactiveData && this.table.modExists("reactiveData", true)){
+		this.table.modules.reactiveData.watchRow(this);
 	}
 };
 
 //update the rows data
 Row.prototype.updateData = function(data){
-	var self = this;
+	var self = this,
+	visible = Tabulator.prototype.helpers.elVisible(this.element);
 
 	return new Promise((resolve, reject) => {
 
 		if(typeof data === "string"){
 			data = JSON.parse(data);
+		}
+
+		if(this.table.options.reactiveData && this.table.modExists("reactiveData", true)){
+			this.table.modules.reactiveData.block();
 		}
 
 		//mutate incomming data if needed
@@ -409,6 +519,10 @@ Row.prototype.updateData = function(data){
 			self.data[attrname] = data[attrname];
 		}
 
+		if(this.table.options.reactiveData && this.table.modExists("reactiveData", true)){
+			this.table.modules.reactiveData.unblock();
+		}
+
 		//update affected cells only
 		for (var attrname in data) {
 			let cell = this.getCell(attrname);
@@ -416,12 +530,16 @@ Row.prototype.updateData = function(data){
 			if(cell){
 				if(cell.getValue() != data[attrname]){
 					cell.setValueProcessData(data[attrname]);
+
+					if(visible){
+						cell.cellRendered();
+					}
 				}
 			}
 		}
 
 		//Partial reinitialization if visible
-		if(Tabulator.prototype.helpers.elVisible(this.element)){
+		if(visible){
 			self.normalizeHeight();
 
 			if(self.table.options.rowFormatter){
@@ -430,6 +548,12 @@ Row.prototype.updateData = function(data){
 		}else{
 			this.initialized = false;
 			this.height = 0;
+			this.heightStyled = "";
+		}
+
+		if(self.table.options.dataTree !== false && self.table.modExists("dataTree") && typeof data[this.table.modules.dataTree.getChildField()] !== "undefined"){
+			this.table.modules.dataTree.initializeRow(this);
+			this.table.rowManager.refreshActiveData("tree", false, true);
 		}
 
 		//self.reinitialize();
@@ -521,10 +645,31 @@ Row.prototype.findPrevEditableCell = function(index){
 	return prevCell;
 };
 
-
 Row.prototype.getCells = function(){
 	return this.cells;
 };
+
+Row.prototype.nextRow = function(){
+	var row = this.table.rowManager.nextDisplayRow(this, true);
+	return row || false;
+};
+
+Row.prototype.prevRow = function(){
+	var row = this.table.rowManager.prevDisplayRow(this, true);
+	return row || false;
+};
+
+Row.prototype.moveToRow = function(to, before){
+	var toRow = this.table.rowManager.findRow(to);
+
+	if(toRow){
+		this.table.rowManager.moveRowActual(this, toRow, !before);
+		this.table.rowManager.refreshActiveData("display", false, true);
+	}else{
+		console.warn("Move Error - No matching row found:", to);
+	}
+};
+
 
 ///////////////////// Actions  /////////////////////
 
@@ -548,18 +693,30 @@ Row.prototype.delete = function(){
 };
 
 
-Row.prototype.deleteActual = function(){
+Row.prototype.deleteActual = function(blockRedraw){
 
 	var index = this.table.rowManager.getRowIndex(this);
 
 	//deselect row if it is selected
 	if(this.table.modExists("selectRow")){
-		this.table.modules.selectRow._deselectRow(this.row, true);
+		this.table.modules.selectRow._deselectRow(this, true);
 	}
 
-	this.table.rowManager.deleteRow(this);
+	// if(this.table.options.dataTree && this.table.modExists("dataTree")){
+	// 	this.table.modules.dataTree.collapseRow(this, true);
+	// }
+
+	//remove any reactive data watchers from row object
+	if(this.table.options.reactiveData && this.table.modExists("reactiveData", true)){
+		this.table.modules.reactiveData.unwatchRow(this);
+	}
+
+	this.table.rowManager.deleteRow(this, blockRedraw);
 
 	this.deleteCells();
+
+	this.initialized = false;
+	this.heightInitialized = false;
 
 	//remove from group
 	if(this.modules.group){
