@@ -160,6 +160,7 @@ var Row = function(data, parent){
 	this.cells = [];
 	this.height = 0; //hold element height
 	this.heightStyled = ""; //hold element height prestyled to improve render efficiency
+	this.manualHeight = false; //user has manually set row height
 	this.outerHeight = 0; //holde lements outer height
 	this.initialized = false; //element has been rendered
 	this.heightInitialized = false; //element has resized cells to fit
@@ -386,8 +387,11 @@ Row.prototype.reinitializeHeight = function(){
 Row.prototype.reinitialize = function(){
 	this.initialized = false;
 	this.heightInitialized = false;
-	this.height = 0;
-	this.heightStyled = "";
+
+	if(!this.manualHeight){
+		this.height = 0;
+		this.heightStyled = "";
+	}
 
 	if(this.element.offsetParent !== null){
 		this.initialize(true);
@@ -395,7 +399,7 @@ Row.prototype.reinitialize = function(){
 };
 
 //get heights when doing bulk row style calcs in virtual DOM
-Row.prototype.calcHeight = function(){
+Row.prototype.calcHeight = function(force){
 
 	var maxHeight = 0,
 	minHeight = this.table.options.resizableRows ? this.element.clientHeight : 0;
@@ -407,7 +411,12 @@ Row.prototype.calcHeight = function(){
 		}
 	});
 
-	this.height = Math.max(maxHeight, minHeight);
+	if(force){
+		this.height = Math.max(maxHeight, minHeight);
+	}else{
+		this.height = this.manualHeight ? this.height : Math.max(maxHeight, minHeight);
+	}
+
 	this.heightStyled = this.height ? this.height + "px" : "";
 	this.outerHeight = this.element.offsetHeight;
 };
@@ -434,7 +443,7 @@ Row.prototype.normalizeHeight = function(force){
 		this.clearCellHeight();
 	}
 
-	this.calcHeight();
+	this.calcHeight(force);
 
 	this.setCellHeight();
 };
@@ -448,6 +457,8 @@ Row.prototype.normalizeHeight = function(force){
 //set height of rows
 Row.prototype.setHeight = function(height, force){
 	if(this.height != height || force){
+
+		this.manualHeight = true;
 
 		this.height = height;
 		this.heightStyled = height ? height + "px" : "";
@@ -694,7 +705,6 @@ Row.prototype.delete = function(){
 
 
 Row.prototype.deleteActual = function(blockRedraw){
-
 	var index = this.table.rowManager.getRowIndex(this);
 
 	//deselect row if it is selected
@@ -708,7 +718,12 @@ Row.prototype.deleteActual = function(blockRedraw){
 
 	//remove any reactive data watchers from row object
 	if(this.table.options.reactiveData && this.table.modExists("reactiveData", true)){
-		this.table.modules.reactiveData.unwatchRow(this);
+		// this.table.modules.reactiveData.unwatchRow(this);
+	}
+
+	//remove from group
+	if(this.modules.group){
+		this.modules.group.removeRow(this);
 	}
 
 	this.table.rowManager.deleteRow(this, blockRedraw);
@@ -717,11 +732,6 @@ Row.prototype.deleteActual = function(blockRedraw){
 
 	this.initialized = false;
 	this.heightInitialized = false;
-
-	//remove from group
-	if(this.modules.group){
-		this.modules.group.removeRow(this);
-	}
 
 	//recalc column calculations if present
 	if(this.table.modExists("columnCalcs")){
@@ -732,7 +742,6 @@ Row.prototype.deleteActual = function(blockRedraw){
 		}
 	}
 };
-
 
 Row.prototype.deleteCells = function(){
 	var cellCount = this.cells.length;
@@ -745,13 +754,11 @@ Row.prototype.deleteCells = function(){
 Row.prototype.wipe = function(){
 	this.deleteCells();
 
-	// this.element.children().each(function(){
-	// 	$(this).remove();
-	// })
-	// this.element.empty();
-
 	while(this.element.firstChild) this.element.removeChild(this.element.firstChild);
-	// this.element.remove();
+
+	this.element = false;
+	this.modules = {};
+
 	if(this.element.parentNode){
 		this.element.parentNode.removeChild(this.element);
 	}

@@ -19,7 +19,7 @@ gutil = require('gulp-util'),
 insert = require('gulp-insert'),
 fs = require('fs');
 
-var version_no = "4.2.1",
+var version_no = "4.2.5",
 
 version = "/* Tabulator v" + version_no + " (c) Oliver Folkerd */\n";
 
@@ -44,7 +44,7 @@ gulp.task('styles', function() {
     .pipe(autoprefixer('last 4 version'))
     .pipe(gulp.dest('dist/css'))
     .pipe(rename({suffix: '.min'}))
-    .pipe(cssnano())
+    .pipe(cssnano({zindex: false}))
     .pipe(insert.prepend(version))
     .pipe(sourcemaps.write('.'))
     .pipe(gulp.dest('dist/css'))
@@ -63,6 +63,7 @@ gulp.task('tabulator', function() {
     // .pipe(jshint.reporter('default'))
     .pipe(babel({
         //presets:['es2015']
+        compact: false,
         presets: [["env",{
             "targets": {
               "browsers": ["last 4 versions"]

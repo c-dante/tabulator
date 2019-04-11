@@ -76,6 +76,7 @@ var Group = function(groupManager, parent, level, key, field, generator, oldGrou
 	this.calcs = {};
 	this.initialized = false;
 	this.modules = {};
+	this.arrowElement = false;
 
 	this.visible = oldGroup ? oldGroup.visible : (typeof groupManager.startOpen[level] !== "undefined" ? groupManager.startOpen[level] : groupManager.startOpen[0]);
 
@@ -84,6 +85,18 @@ var Group = function(groupManager, parent, level, key, field, generator, oldGrou
 
 	this.createValueGroups();
 };
+
+Group.prototype.wipe = function(){
+	if(this.groupList.length){
+		this.groupList.forEach(function(group){
+			group.wipe();
+		});
+	}else{
+		this.element = false;
+		this.arrowElement = false;
+		this.elementContents = false;
+	}
+}
 
 Group.prototype.createElements = function(){
 	this.element = document.createElement("div");
@@ -274,6 +287,16 @@ Group.prototype.insertRow = function(row, to, after){
 	if(this.groupManager.table.modExists("columnCalcs") && this.groupManager.table.options.columnCalcs != "table"){
 		this.groupManager.table.modules.columnCalcs.recalcGroup(this);
 	}
+
+	this.groupManager.updateGroupRows(true);
+};
+
+Group.prototype.scrollHeader = function(left){
+	this.arrowElement.style.marginLeft = left;
+
+	this.groupList.forEach(function(child){
+		child.scrollHeader(left);
+	});
 };
 
 Group.prototype.getRowIndex = function(row){
@@ -299,6 +322,8 @@ Group.prototype.conformRowData = function(data){
 
 Group.prototype.removeRow = function(row){
 	var index = this.rows.indexOf(row);
+	var el = row.getElement();
+
 
 	if(index > -1){
 		this.rows.splice(index, 1);
@@ -313,10 +338,17 @@ Group.prototype.removeRow = function(row){
 
 		this.groupManager.updateGroupRows(true);
 	}else{
+
+		if(el.parentNode){
+			el.parentNode.removeChild(el);
+		}
+
 		this.generateGroupHeaderContents();
+
 		if(this.groupManager.table.modExists("columnCalcs") && this.groupManager.table.options.columnCalcs != "table"){
 			this.groupManager.table.modules.columnCalcs.recalcGroup(this);
 		}
+
 	}
 };
 
@@ -830,6 +862,12 @@ GroupRows.prototype.getGroups = function(compoment){
 	return groupComponents;
 };
 
+GroupRows.prototype.wipe = function(){
+	this.groupList.forEach(function(group){
+		group.wipe();
+	});
+}
+
 GroupRows.prototype.pullGroupListData = function(groupList) {
 	var self = this;
 	var groupListData = [];
@@ -987,8 +1025,10 @@ GroupRows.prototype.updateGroupRows = function(force){
 };
 
 GroupRows.prototype.scrollHeaders = function(left){
+	left = left + "px";
+
 	this.groupList.forEach(function(group){
-		group.arrowElement.style.marginLeft = left + "px";
+		group.scrollHeader(left);
 	});
 };
 

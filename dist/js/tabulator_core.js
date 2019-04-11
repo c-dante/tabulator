@@ -1,4 +1,4 @@
-/* Tabulator v4.2.1 (c) Oliver Folkerd */
+/* Tabulator v4.2.5 (c) Oliver Folkerd */
 
 'use strict';
 
@@ -7,102 +7,157 @@
 var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol" ? function (obj) { return typeof obj; } : function (obj) { return obj && typeof Symbol === "function" && obj.constructor === Symbol && obj !== Symbol.prototype ? "symbol" : typeof obj; };
 
 if (!Array.prototype.findIndex) {
+
 	Object.defineProperty(Array.prototype, 'findIndex', {
+
 		value: function value(predicate) {
+
 			// 1. Let O be ? ToObject(this value).
+
 			if (this == null) {
+
 				throw new TypeError('"this" is null or not defined');
 			}
 
 			var o = Object(this);
 
 			// 2. Let len be ? ToLength(? Get(O, "length")).
+
 			var len = o.length >>> 0;
 
 			// 3. If IsCallable(predicate) is false, throw a TypeError exception.
+
 			if (typeof predicate !== 'function') {
+
 				throw new TypeError('predicate must be a function');
 			}
 
 			// 4. If thisArg was supplied, let T be thisArg; else let T be undefined.
+
 			var thisArg = arguments[1];
 
 			// 5. Let k be 0.
+
 			var k = 0;
 
 			// 6. Repeat, while k < len
+
 			while (k < len) {
+
 				// a. Let Pk be ! ToString(k).
+
 				// b. Let kValue be ? Get(O, Pk).
+
 				// c. Let testResult be ToBoolean(? Call(predicate, T, « kValue, k, O »)).
+
 				// d. If testResult is true, return k.
+
 				var kValue = o[k];
+
 				if (predicate.call(thisArg, kValue, k, o)) {
+
 					return k;
 				}
+
 				// e. Increase k by 1.
+
 				k++;
 			}
 
 			// 7. Return -1.
+
 			return -1;
 		}
+
 	});
 }
 
 // https://tc39.github.io/ecma262/#sec-array.prototype.find
+
 if (!Array.prototype.find) {
+
 	Object.defineProperty(Array.prototype, 'find', {
+
 		value: function value(predicate) {
+
 			// 1. Let O be ? ToObject(this value).
+
 			if (this == null) {
+
 				throw new TypeError('"this" is null or not defined');
 			}
 
 			var o = Object(this);
 
 			// 2. Let len be ? ToLength(? Get(O, "length")).
+
 			var len = o.length >>> 0;
 
 			// 3. If IsCallable(predicate) is false, throw a TypeError exception.
+
 			if (typeof predicate !== 'function') {
+
 				throw new TypeError('predicate must be a function');
 			}
 
 			// 4. If thisArg was supplied, let T be thisArg; else let T be undefined.
+
 			var thisArg = arguments[1];
 
 			// 5. Let k be 0.
+
 			var k = 0;
 
 			// 6. Repeat, while k < len
+
 			while (k < len) {
+
 				// a. Let Pk be ! ToString(k).
+
 				// b. Let kValue be ? Get(O, Pk).
+
 				// c. Let testResult be ToBoolean(? Call(predicate, T, « kValue, k, O »)).
+
 				// d. If testResult is true, return kValue.
+
 				var kValue = o[k];
+
 				if (predicate.call(thisArg, kValue, k, o)) {
+
 					return kValue;
 				}
+
 				// e. Increase k by 1.
+
 				k++;
 			}
 
 			// 7. Return undefined.
+
 			return undefined;
 		}
+
 	});
 }
 
 var ColumnManager = function ColumnManager(table) {
+
 	this.table = table; //hold parent table
+
+	this.blockHozScrollEvent = false;
+
 	this.headersElement = this.createHeadersElement();
+
 	this.element = this.createHeaderElement(); //containing element
+
 	this.rowManager = null; //hold row manager object
+
 	this.columns = []; // column definition object
+
 	this.columnsByIndex = []; //columns by index
+
 	this.columnsByField = {}; //columns by field
+
 	this.scrollLeft = 0;
 
 	this.element.insertBefore(this.headersElement, this.element.firstChild);
@@ -110,7 +165,9 @@ var ColumnManager = function ColumnManager(table) {
 
 ////////////// Setup Functions /////////////////
 
+
 ColumnManager.prototype.createHeadersElement = function () {
+
 	var el = document.createElement("div");
 
 	el.classList.add("tabulator-headers");
@@ -119,6 +176,7 @@ ColumnManager.prototype.createHeadersElement = function () {
 };
 
 ColumnManager.prototype.createHeaderElement = function () {
+
 	var el = document.createElement("div");
 
 	el.classList.add("tabulator-header");
@@ -127,57 +185,92 @@ ColumnManager.prototype.createHeaderElement = function () {
 };
 
 ColumnManager.prototype.initialize = function () {
+
 	var self = this;
 
 	//scroll body along with header
-	self.element.addEventListener("scroll", function () {
-		self.table.rowManager.scrollHorizontal(self.element.scrollLeft);
+
+	self.element.addEventListener("scroll", function (e) {
+
+		if (!self.blockHozScrollEvent) {
+
+			self.table.rowManager.scrollHorizontal(self.element.scrollLeft);
+		}
 	});
 };
 
 //link to row manager
+
 ColumnManager.prototype.setRowManager = function (manager) {
+
 	this.rowManager = manager;
 };
 
 //return containing element
+
 ColumnManager.prototype.getElement = function () {
+
 	return this.element;
 };
 
 //return header containing element
+
 ColumnManager.prototype.getHeadersElement = function () {
+
 	return this.headersElement;
 };
 
+ColumnManager.prototype.tempScrollBlock = function () {
+	var _this = this;
+
+	clearTimeout(this.blockHozScrollEvent);
+
+	this.blockHozScrollEvent = setTimeout(function () {
+		_this.blockHozScrollEvent = false;
+	}, 50);
+};
+
 //scroll horizontally to match table body
+
 ColumnManager.prototype.scrollHorizontal = function (left) {
+
 	var hozAdjust = 0,
 	    scrollWidth = this.element.scrollWidth - this.table.element.clientWidth;
+
+	this.tempScrollBlock();
 
 	this.element.scrollLeft = left;
 
 	//adjust for vertical scrollbar moving table when present
+
 	if (left > scrollWidth) {
+
 		hozAdjust = left - scrollWidth;
+
 		this.element.style.marginLeft = -hozAdjust + "px";
 	} else {
+
 		this.element.style.marginLeft = 0;
 	}
 
 	//keep frozen columns fixed in position
+
 	//this._calcFrozenColumnsPos(hozAdjust + 3);
+
 
 	this.scrollLeft = left;
 
 	if (this.table.modExists("frozenColumns")) {
+
 		this.table.modules.frozenColumns.layout();
 	}
 };
 
 ///////////// Column Setup Functions /////////////
 
+
 ColumnManager.prototype.generateColumnsFromRowData = function (data) {
+
 	var cols = [],
 	    row,
 	    sorter;
@@ -187,41 +280,61 @@ ColumnManager.prototype.generateColumnsFromRowData = function (data) {
 		row = data[0];
 
 		for (var key in row) {
+
 			var col = {
+
 				field: key,
+
 				title: key
+
 			};
 
 			var value = row[key];
 
 			switch (typeof value === 'undefined' ? 'undefined' : _typeof(value)) {
+
 				case "undefined":
+
 					sorter = "string";
+
 					break;
 
 				case "boolean":
+
 					sorter = "boolean";
+
 					break;
 
 				case "object":
+
 					if (Array.isArray(value)) {
+
 						sorter = "array";
 					} else {
+
 						sorter = "string";
 					}
+
 					break;
 
 				default:
+
 					if (!isNaN(value) && value !== "") {
+
 						sorter = "number";
 					} else {
+
 						if (value.match(/((^[0-9]+[a-z]+)|(^[a-z]+[0-9]+))+$/i)) {
+
 							sorter = "alphanum";
 						} else {
+
 							sorter = "string";
 						}
 					}
+
 					break;
+
 			}
 
 			col.sorter = sorter;
@@ -230,31 +343,39 @@ ColumnManager.prototype.generateColumnsFromRowData = function (data) {
 		}
 
 		this.table.options.columns = cols;
+
 		this.setColumns(this.table.options.columns);
 	}
 };
 
 ColumnManager.prototype.setColumns = function (cols, row) {
+
 	var self = this;
 
 	while (self.headersElement.firstChild) {
 		self.headersElement.removeChild(self.headersElement.firstChild);
 	}self.columns = [];
+
 	self.columnsByIndex = [];
+
 	self.columnsByField = {};
 
 	//reset frozen columns
+
 	if (self.table.modExists("frozenColumns")) {
+
 		self.table.modules.frozenColumns.reset();
 	}
 
 	cols.forEach(function (def, i) {
+
 		self._addColumn(def);
 	});
 
 	self._reIndexColumns();
 
 	if (self.table.options.responsiveLayout && self.table.modExists("responsiveLayout", true)) {
+
 		self.table.modules.responsiveLayout.initialize();
 	}
 
@@ -262,6 +383,7 @@ ColumnManager.prototype.setColumns = function (cols, row) {
 };
 
 ColumnManager.prototype._addColumn = function (definition, before, nextToColumn) {
+
 	var column = new Column(definition, this),
 	    colEl = column.getElement(),
 	    index = nextToColumn ? this.findColumnIndex(nextToColumn) : nextToColumn;
@@ -269,21 +391,31 @@ ColumnManager.prototype._addColumn = function (definition, before, nextToColumn)
 	if (nextToColumn && index > -1) {
 
 		var parentIndex = this.columns.indexOf(nextToColumn.getTopColumn());
+
 		var nextEl = nextToColumn.getElement();
 
 		if (before) {
+
 			this.columns.splice(parentIndex, 0, column);
+
 			nextEl.parentNode.insertBefore(colEl, nextEl);
 		} else {
+
 			this.columns.splice(parentIndex + 1, 0, column);
+
 			nextEl.parentNode.insertBefore(colEl, nextEl.nextSibling);
 		}
 	} else {
+
 		if (before) {
+
 			this.columns.unshift(column);
+
 			this.headersElement.insertBefore(column.getElement(), this.headersElement.firstChild);
 		} else {
+
 			this.columns.push(column);
+
 			this.headersElement.appendChild(column.getElement());
 		}
 	}
@@ -292,29 +424,37 @@ ColumnManager.prototype._addColumn = function (definition, before, nextToColumn)
 };
 
 ColumnManager.prototype.registerColumnField = function (col) {
+
 	if (col.definition.field) {
+
 		this.columnsByField[col.definition.field] = col;
 	}
 };
 
 ColumnManager.prototype.registerColumnPosition = function (col) {
+
 	this.columnsByIndex.push(col);
 };
 
 ColumnManager.prototype._reIndexColumns = function () {
+
 	this.columnsByIndex = [];
 
 	this.columns.forEach(function (column) {
+
 		column.reRegisterPosition();
 	});
 };
 
 //ensure column headers take up the correct amount of space in column groups
+
 ColumnManager.prototype._verticalAlignHeaders = function () {
+
 	var self = this,
 	    minHeight = 0;
 
 	self.columns.forEach(function (column) {
+
 		var height;
 
 		column.clearVerticalAlign();
@@ -322,11 +462,13 @@ ColumnManager.prototype._verticalAlignHeaders = function () {
 		height = column.getHeight();
 
 		if (height > minHeight) {
+
 			minHeight = height;
 		}
 	});
 
 	self.columns.forEach(function (column) {
+
 		column.verticalAlign(self.table.options.columnVertAlign, minHeight);
 	});
 
@@ -335,74 +477,110 @@ ColumnManager.prototype._verticalAlignHeaders = function () {
 
 //////////////// Column Details /////////////////
 
+
 ColumnManager.prototype.findColumn = function (subject) {
+
 	var self = this;
 
 	if ((typeof subject === 'undefined' ? 'undefined' : _typeof(subject)) == "object") {
 
 		if (subject instanceof Column) {
+
 			//subject is column element
+
 			return subject;
 		} else if (subject instanceof ColumnComponent) {
+
 			//subject is public column component
+
 			return subject._getSelf() || false;
 		} else if (subject instanceof HTMLElement) {
+
 			//subject is a HTML element of the column header
+
 			var match = self.columns.find(function (column) {
+
 				return column.element === subject;
 			});
 
 			return match || false;
 		}
 	} else {
+
 		//subject should be treated as the field name of the column
+
 		return this.columnsByField[subject] || false;
 	}
 
 	//catch all for any other type of input
 
+
 	return false;
 };
 
 ColumnManager.prototype.getColumnByField = function (field) {
+
 	return this.columnsByField[field];
 };
 
 ColumnManager.prototype.getColumnByIndex = function (index) {
+
 	return this.columnsByIndex[index];
 };
 
+ColumnManager.prototype.getFirstVisibileColumn = function (index) {
+
+	var index = this.columnsByIndex.findIndex(function (col) {
+
+		return col.visible;
+	});
+
+	return index > -1 ? this.columnsByIndex[index] : false;
+};
+
 ColumnManager.prototype.getColumns = function () {
+
 	return this.columns;
 };
 
 ColumnManager.prototype.findColumnIndex = function (column) {
+
 	return this.columnsByIndex.findIndex(function (col) {
+
 		return column === col;
 	});
 };
 
 //return all columns that are not groups
+
 ColumnManager.prototype.getRealColumns = function () {
+
 	return this.columnsByIndex;
 };
 
 //travers across columns and call action
+
 ColumnManager.prototype.traverse = function (callback) {
+
 	var self = this;
 
 	self.columnsByIndex.forEach(function (column, i) {
+
 		callback(column, i);
 	});
 };
 
 //get defintions of actual columns
+
 ColumnManager.prototype.getDefinitions = function (active) {
+
 	var self = this,
 	    output = [];
 
 	self.columnsByIndex.forEach(function (column) {
+
 		if (!active || active && column.visible) {
+
 			output.push(column.getDefinition());
 		}
 	});
@@ -411,11 +589,14 @@ ColumnManager.prototype.getDefinitions = function (active) {
 };
 
 //get full nested definition tree
+
 ColumnManager.prototype.getDefinitionTree = function () {
+
 	var self = this,
 	    output = [];
 
 	self.columns.forEach(function (column) {
+
 		output.push(column.getDefinition(true));
 	});
 
@@ -423,11 +604,13 @@ ColumnManager.prototype.getDefinitionTree = function () {
 };
 
 ColumnManager.prototype.getComponents = function (structured) {
+
 	var self = this,
 	    output = [],
 	    columns = structured ? self.columns : self.columnsByIndex;
 
 	columns.forEach(function (column) {
+
 		output.push(column.getComponent());
 	});
 
@@ -435,10 +618,13 @@ ColumnManager.prototype.getComponents = function (structured) {
 };
 
 ColumnManager.prototype.getWidth = function () {
+
 	var width = 0;
 
 	this.columnsByIndex.forEach(function (column) {
+
 		if (column.visible) {
+
 			width += column.getWidth();
 		}
 	});
@@ -449,22 +635,27 @@ ColumnManager.prototype.getWidth = function () {
 ColumnManager.prototype.moveColumn = function (from, to, after) {
 
 	this._moveColumnInArray(this.columns, from, to, after);
+
 	this._moveColumnInArray(this.columnsByIndex, from, to, after, true);
 
 	if (this.table.options.responsiveLayout && this.table.modExists("responsiveLayout", true)) {
+
 		this.table.modules.responsiveLayout.initialize();
 	}
 
 	if (this.table.options.columnMoved) {
+
 		this.table.options.columnMoved.call(this.table, from.getComponent(), this.table.columnManager.getComponents());
 	}
 
 	if (this.table.options.persistentLayout && this.table.modExists("persistence", true)) {
+
 		this.table.modules.persistence.save("columns");
 	}
 };
 
 ColumnManager.prototype._moveColumnInArray = function (columns, from, to, after, updateRows) {
+
 	var fromIndex = columns.indexOf(from),
 	    toIndex;
 
@@ -477,9 +668,11 @@ ColumnManager.prototype._moveColumnInArray = function (columns, from, to, after,
 		if (toIndex > -1) {
 
 			if (after) {
+
 				toIndex = toIndex + 1;
 			}
 		} else {
+
 			toIndex = fromIndex;
 		}
 
@@ -488,8 +681,11 @@ ColumnManager.prototype._moveColumnInArray = function (columns, from, to, after,
 		if (updateRows) {
 
 			this.table.rowManager.rows.forEach(function (row) {
+
 				if (row.cells.length) {
+
 					var cell = row.cells.splice(fromIndex, 1)[0];
+
 					row.cells.splice(toIndex, 0, cell);
 				}
 			});
@@ -498,7 +694,7 @@ ColumnManager.prototype._moveColumnInArray = function (columns, from, to, after,
 };
 
 ColumnManager.prototype.scrollToColumn = function (column, position, ifVisible) {
-	var _this = this;
+	var _this2 = this;
 
 	var left = 0,
 	    offset = 0,
@@ -508,48 +704,64 @@ ColumnManager.prototype.scrollToColumn = function (column, position, ifVisible) 
 	return new Promise(function (resolve, reject) {
 
 		if (typeof position === "undefined") {
-			position = _this.table.options.scrollToColumnPosition;
+
+			position = _this2.table.options.scrollToColumnPosition;
 		}
 
 		if (typeof ifVisible === "undefined") {
-			ifVisible = _this.table.options.scrollToColumnIfVisible;
+
+			ifVisible = _this2.table.options.scrollToColumnIfVisible;
 		}
 
 		if (column.visible) {
 
 			//align to correct position
+
 			switch (position) {
+
 				case "middle":
+
 				case "center":
-					adjust = -_this.element.clientWidth / 2;
+
+					adjust = -_this2.element.clientWidth / 2;
+
 					break;
 
 				case "right":
-					adjust = colEl.clientWidth - _this.headersElement.clientWidth;
+
+					adjust = colEl.clientWidth - _this2.headersElement.clientWidth;
+
 					break;
+
 			}
 
 			//check column visibility
+
 			if (!ifVisible) {
 
 				offset = colEl.offsetLeft;
 
-				if (offset > 0 && offset + colEl.offsetWidth < _this.element.clientWidth) {
+				if (offset > 0 && offset + colEl.offsetWidth < _this2.element.clientWidth) {
+
 					return false;
 				}
 			}
 
 			//calculate scroll position
-			left = colEl.offsetLeft + _this.element.scrollLeft + adjust;
 
-			left = Math.max(Math.min(left, _this.table.rowManager.element.scrollWidth - _this.table.rowManager.element.clientWidth), 0);
+			left = colEl.offsetLeft + _this2.element.scrollLeft + adjust;
 
-			_this.table.rowManager.scrollHorizontal(left);
-			_this.scrollHorizontal(left);
+			left = Math.max(Math.min(left, _this2.table.rowManager.element.scrollWidth - _this2.table.rowManager.element.clientWidth), 0);
+
+			_this2.table.rowManager.scrollHorizontal(left);
+
+			_this2.scrollHorizontal(left);
 
 			resolve();
 		} else {
+
 			console.warn("Scroll Error - Column not visible");
+
 			reject("Scroll Error - Column not visible");
 		}
 	});
@@ -557,12 +769,15 @@ ColumnManager.prototype.scrollToColumn = function (column, position, ifVisible) 
 
 //////////////// Cell Management /////////////////
 
+
 ColumnManager.prototype.generateCells = function (row) {
+
 	var self = this;
 
 	var cells = [];
 
 	self.columnsByIndex.forEach(function (column) {
+
 		cells.push(column.generateCell(row));
 	});
 
@@ -573,17 +788,22 @@ ColumnManager.prototype.generateCells = function (row) {
 
 
 ColumnManager.prototype.getFlexBaseWidth = function () {
+
 	var self = this,
 	    totalWidth = self.table.element.clientWidth,
 	    //table element width
+
 	fixedWidth = 0;
 
 	//adjust for vertical scrollbar if present
+
 	if (self.rowManager.element.scrollHeight > self.rowManager.element.clientHeight) {
+
 		totalWidth -= self.rowManager.element.offsetWidth - self.rowManager.element.clientWidth;
 	}
 
 	this.columnsByIndex.forEach(function (column) {
+
 		var width, minWidth, colWidth;
 
 		if (column.visible) {
@@ -593,12 +813,16 @@ ColumnManager.prototype.getFlexBaseWidth = function () {
 			minWidth = typeof column.minWidth == "undefined" ? self.table.options.columnMinWidth : parseInt(column.minWidth);
 
 			if (typeof width == "string") {
+
 				if (width.indexOf("%") > -1) {
+
 					colWidth = totalWidth / 100 * parseInt(width);
 				} else {
+
 					colWidth = parseInt(width);
 				}
 			} else {
+
 				colWidth = width;
 			}
 
@@ -610,21 +834,25 @@ ColumnManager.prototype.getFlexBaseWidth = function () {
 };
 
 ColumnManager.prototype.addColumn = function (definition, before, nextToColumn) {
+
 	var column = this._addColumn(definition, before, nextToColumn);
 
 	this._reIndexColumns();
 
 	if (this.table.options.responsiveLayout && this.table.modExists("responsiveLayout", true)) {
+
 		this.table.modules.responsiveLayout.initialize();
 	}
 
 	if (this.table.modExists("columnCalcs")) {
+
 		this.table.modules.columnCalcs.recalc(this.table.rowManager.activeRows);
 	}
 
 	this.redraw();
 
 	if (this.table.modules.layout.getMode() != "fitColumns") {
+
 		column.reinitializeWidth();
 	}
 
@@ -634,30 +862,39 @@ ColumnManager.prototype.addColumn = function (definition, before, nextToColumn) 
 };
 
 //remove column from system
+
 ColumnManager.prototype.deregisterColumn = function (column) {
+
 	var field = column.getField(),
 	    index;
 
 	//remove from field list
+
 	if (field) {
+
 		delete this.columnsByField[field];
 	}
 
 	//remove from index list
+
 	index = this.columnsByIndex.indexOf(column);
 
 	if (index > -1) {
+
 		this.columnsByIndex.splice(index, 1);
 	}
 
 	//remove from column list
+
 	index = this.columns.indexOf(column);
 
 	if (index > -1) {
+
 		this.columns.splice(index, 1);
 	}
 
 	if (this.table.options.responsiveLayout && this.table.modExists("responsiveLayout", true)) {
+
 		this.table.modules.responsiveLayout.initialize();
 	}
 
@@ -665,43 +902,57 @@ ColumnManager.prototype.deregisterColumn = function (column) {
 };
 
 //redraw columns
+
 ColumnManager.prototype.redraw = function (force) {
+
 	if (force) {
 
 		if (Tabulator.prototype.helpers.elVisible(this.element)) {
+
 			this._verticalAlignHeaders();
 		}
 
 		this.table.rowManager.resetScroll();
+
 		this.table.rowManager.reinitialize();
 	}
 
 	if (this.table.modules.layout.getMode() == "fitColumns") {
+
 		this.table.modules.layout.layout();
 	} else {
+
 		if (force) {
+
 			this.table.modules.layout.layout();
 		} else {
+
 			if (this.table.options.responsiveLayout && this.table.modExists("responsiveLayout", true)) {
+
 				this.table.modules.responsiveLayout.update();
 			}
 		}
 	}
 
 	if (this.table.modExists("frozenColumns")) {
+
 		this.table.modules.frozenColumns.layout();
 	}
 
 	if (this.table.modExists("columnCalcs")) {
+
 		this.table.modules.columnCalcs.recalc(this.table.rowManager.activeRows);
 	}
 
 	if (force) {
+
 		if (this.table.options.persistentLayout && this.table.modExists("persistence", true)) {
+
 			this.table.modules.persistence.save("columns");
 		}
 
 		if (this.table.modExists("columnCalcs")) {
+
 			this.table.modules.columnCalcs.redraw();
 		}
 	}
@@ -1602,6 +1853,10 @@ Column.prototype.show = function (silent, responsiveToggle) {
 		if (!silent) {
 			this.table.options.columnVisibilityChanged.call(this.table, this.getComponent(), true);
 		}
+
+		if (this.parent.isGroup) {
+			this.parent.matchChildWidths();
+		}
 	}
 };
 
@@ -1633,6 +1888,10 @@ Column.prototype.hide = function (silent, responsiveToggle) {
 		if (!silent) {
 			this.table.options.columnVisibilityChanged.call(this.table, this.getComponent(), false);
 		}
+
+		if (this.parent.isGroup) {
+			this.parent.matchChildWidths();
+		}
 	}
 };
 
@@ -1641,7 +1900,9 @@ Column.prototype.matchChildWidths = function () {
 
 	if (this.contentElement && this.columns.length) {
 		this.columns.forEach(function (column) {
-			childWidth += column.getWidth();
+			if (column.visible) {
+				childWidth += column.getWidth();
+			}
 		});
 
 		this.contentElement.style.maxWidth = childWidth - 1 + "px";
@@ -2025,7 +2286,7 @@ RowManager.prototype.getRowFromPosition = function (position, active) {
 };
 
 RowManager.prototype.scrollToRow = function (row, position, ifVisible) {
-	var _this2 = this;
+	var _this3 = this;
 
 	var rowIndex = this.getDisplayRows().indexOf(row),
 	    rowEl = row.getElement(),
@@ -2036,21 +2297,21 @@ RowManager.prototype.scrollToRow = function (row, position, ifVisible) {
 		if (rowIndex > -1) {
 
 			if (typeof position === "undefined") {
-				position = _this2.table.options.scrollToRowPosition;
+				position = _this3.table.options.scrollToRowPosition;
 			}
 
 			if (typeof ifVisible === "undefined") {
-				ifVisible = _this2.table.options.scrollToRowIfVisible;
+				ifVisible = _this3.table.options.scrollToRowIfVisible;
 			}
 
 			if (position === "nearest") {
-				switch (_this2.renderMode) {
+				switch (_this3.renderMode) {
 					case "classic":
 						rowTop = Tabulator.prototype.helpers.elOffset(rowEl).top;
-						position = Math.abs(_this2.element.scrollTop - rowTop) > Math.abs(_this2.element.scrollTop + _this2.element.clientHeight - rowTop) ? "bottom" : "top";
+						position = Math.abs(_this3.element.scrollTop - rowTop) > Math.abs(_this3.element.scrollTop + _this3.element.clientHeight - rowTop) ? "bottom" : "top";
 						break;
 					case "virtual":
-						position = Math.abs(_this2.vDomTop - rowIndex) > Math.abs(_this2.vDomBottom - rowIndex) ? "bottom" : "top";
+						position = Math.abs(_this3.vDomTop - rowIndex) > Math.abs(_this3.vDomBottom - rowIndex) ? "bottom" : "top";
 						break;
 				}
 			}
@@ -2058,21 +2319,21 @@ RowManager.prototype.scrollToRow = function (row, position, ifVisible) {
 			//check row visibility
 			if (!ifVisible) {
 				if (Tabulator.prototype.helpers.elVisible(rowEl)) {
-					offset = Tabulator.prototype.helpers.elOffset(rowEl).top - Tabulator.prototype.helpers.elOffset(_this2.element).top;
+					offset = Tabulator.prototype.helpers.elOffset(rowEl).top - Tabulator.prototype.helpers.elOffset(_this3.element).top;
 
-					if (offset > 0 && offset < _this2.element.clientHeight - rowEl.offsetHeight) {
+					if (offset > 0 && offset < _this3.element.clientHeight - rowEl.offsetHeight) {
 						return false;
 					}
 				}
 			}
 
 			//scroll to row
-			switch (_this2.renderMode) {
+			switch (_this3.renderMode) {
 				case "classic":
-					_this2.element.scrollTop = Tabulator.prototype.helpers.elOffset(rowEl).top - Tabulator.prototype.helpers.elOffset(_this2.element).top + _this2.element.scrollTop;
+					_this3.element.scrollTop = Tabulator.prototype.helpers.elOffset(rowEl).top - Tabulator.prototype.helpers.elOffset(_this3.element).top + _this3.element.scrollTop;
 					break;
 				case "virtual":
-					_this2._virtualRenderFill(rowIndex, true);
+					_this3._virtualRenderFill(rowIndex, true);
 					break;
 			}
 
@@ -2080,11 +2341,11 @@ RowManager.prototype.scrollToRow = function (row, position, ifVisible) {
 			switch (position) {
 				case "middle":
 				case "center":
-					_this2.element.scrollTop = _this2.element.scrollTop - _this2.element.clientHeight / 2;
+					_this3.element.scrollTop = _this3.element.scrollTop - _this3.element.clientHeight / 2;
 					break;
 
 				case "bottom":
-					_this2.element.scrollTop = _this2.element.scrollTop - _this2.element.clientHeight + rowEl.offsetHeight;
+					_this3.element.scrollTop = _this3.element.scrollTop - _this3.element.clientHeight + rowEl.offsetHeight;
 					break;
 			}
 
@@ -2099,25 +2360,25 @@ RowManager.prototype.scrollToRow = function (row, position, ifVisible) {
 ////////////////// Data Handling //////////////////
 
 RowManager.prototype.setData = function (data, renderInPosition) {
-	var _this3 = this;
+	var _this4 = this;
 
 	var self = this;
 
 	return new Promise(function (resolve, reject) {
-		if (renderInPosition && _this3.getDisplayRows().length) {
+		if (renderInPosition && _this4.getDisplayRows().length) {
 			if (self.table.options.pagination) {
 				self._setDataActual(data, true);
 			} else {
-				_this3.reRenderInPosition(function () {
+				_this4.reRenderInPosition(function () {
 					self._setDataActual(data);
 				});
 			}
 		} else {
-			if (_this3.table.options.autoColumns) {
-				_this3.table.columnManager.generateColumnsFromRowData(data);
+			if (_this4.table.options.autoColumns) {
+				_this4.table.columnManager.generateColumnsFromRowData(data);
 			}
-			_this3.resetScroll();
-			_this3._setDataActual(data);
+			_this4.resetScroll();
+			_this4._setDataActual(data);
 		}
 
 		resolve();
@@ -2129,11 +2390,7 @@ RowManager.prototype._setDataActual = function (data, renderInPosition) {
 
 	self.table.options.dataLoading.call(this.table, data);
 
-	self.rows.forEach(function (row) {
-		row.wipe();
-	});
-
-	self.rows = [];
+	this._wipeElements();
 
 	if (this.table.options.history && this.table.modExists("history")) {
 		this.table.modules.history.clear();
@@ -2164,6 +2421,18 @@ RowManager.prototype._setDataActual = function (data, renderInPosition) {
 	} else {
 		console.error("Data Loading Error - Unable to process data due to invalid data type \nExpecting: array \nReceived: ", typeof data === 'undefined' ? 'undefined' : _typeof(data), "\nData:     ", data);
 	}
+};
+
+RowManager.prototype._wipeElements = function () {
+	this.rows.forEach(function (row) {
+		row.wipe();
+	});
+
+	if (this.table.options.groupBy && this.table.modExists("groupRows")) {
+		this.table.modules.groupRows.wipe();
+	}
+
+	this.rows = [];
 };
 
 RowManager.prototype.deleteRow = function (row, blockRedraw) {
@@ -2220,14 +2489,14 @@ RowManager.prototype.addRow = function (data, pos, index, blockRedraw) {
 
 //add multiple rows
 RowManager.prototype.addRows = function (data, pos, index) {
-	var _this4 = this;
+	var _this5 = this;
 
 	var self = this,
 	    length = 0,
 	    rows = [];
 
 	return new Promise(function (resolve, reject) {
-		pos = _this4.findAddRowPos(pos);
+		pos = _this5.findAddRowPos(pos);
 
 		if (!Array.isArray(data)) {
 			data = [data];
@@ -2244,17 +2513,17 @@ RowManager.prototype.addRows = function (data, pos, index) {
 			rows.push(row);
 		});
 
-		if (_this4.table.options.groupBy && _this4.table.modExists("groupRows")) {
-			_this4.table.modules.groupRows.updateGroupRows(true);
-		} else if (_this4.table.options.pagination && _this4.table.modExists("page")) {
-			_this4.refreshActiveData(false, false, true);
+		if (_this5.table.options.groupBy && _this5.table.modExists("groupRows")) {
+			_this5.table.modules.groupRows.updateGroupRows(true);
+		} else if (_this5.table.options.pagination && _this5.table.modExists("page")) {
+			_this5.refreshActiveData(false, false, true);
 		} else {
-			_this4.reRenderInPosition();
+			_this5.reRenderInPosition();
 		}
 
 		//recalc column calculations if present
-		if (_this4.table.modExists("columnCalcs")) {
-			_this4.table.modules.columnCalcs.recalc(_this4.table.rowManager.activeRows);
+		if (_this5.table.modExists("columnCalcs")) {
+			_this5.table.modules.columnCalcs.recalc(_this5.table.rowManager.activeRows);
 		}
 
 		resolve(rows);
@@ -2940,11 +3209,15 @@ RowManager.prototype.reRenderInPosition = function (callback) {
 		this.scrollHorizontal(left);
 	} else {
 		this.renderTable();
+
+		if (callback) {
+			callback();
+		}
 	}
 };
 
 RowManager.prototype.setRenderMode = function () {
-	if (this.table.options.virtualDom) {
+	if ((this.table.element.clientHeight || this.table.options.height) && this.table.options.virtualDom) {
 		this.renderMode = "virtual";
 	} else {
 		this.renderMode = "classic";
@@ -3094,14 +3367,13 @@ RowManager.prototype._virtualRenderFill = function (position, forceMove, offset)
 	if (!position) {
 		self._clearVirtualDom();
 	} else {
-		// element.children().detach();
 		while (element.firstChild) {
 			element.removeChild(element.firstChild);
 		} //check if position is too close to bottom of table
-		var heightOccpied = (self.displayRowsCount - position + 1) * self.vDomRowHeight;
+		var heightOccupied = (self.displayRowsCount - position + 1) * self.vDomRowHeight;
 
-		if (heightOccpied < self.height) {
-			position -= Math.ceil((self.height - heightOccpied) / self.vDomRowHeight);
+		if (heightOccupied < self.height) {
+			position -= Math.ceil((self.height - heightOccupied) / self.vDomRowHeight);
 
 			if (position < 0) {
 				position = 0;
@@ -3418,7 +3690,7 @@ RowManager.prototype.normalizeHeight = function () {
 RowManager.prototype.adjustTableSize = function () {
 
 	if (this.renderMode === "virtual") {
-		this.height = this.element.clientHeight || 1;
+		this.height = this.element.clientHeight;
 		this.vDomWindowBuffer = this.table.options.virtualDomBuffer || this.height;
 
 		var otherHeight = this.columnManager.getElement().offsetHeight + (this.table.footerManager && !this.table.footerManager.external ? this.table.footerManager.getElement().offsetHeight : 0);
@@ -3640,6 +3912,7 @@ var Row = function Row(data, parent) {
 	this.cells = [];
 	this.height = 0; //hold element height
 	this.heightStyled = ""; //hold element height prestyled to improve render efficiency
+	this.manualHeight = false; //user has manually set row height
 	this.outerHeight = 0; //holde lements outer height
 	this.initialized = false; //element has been rendered
 	this.heightInitialized = false; //element has resized cells to fit
@@ -3862,8 +4135,11 @@ Row.prototype.reinitializeHeight = function () {
 Row.prototype.reinitialize = function () {
 	this.initialized = false;
 	this.heightInitialized = false;
-	this.height = 0;
-	this.heightStyled = "";
+
+	if (!this.manualHeight) {
+		this.height = 0;
+		this.heightStyled = "";
+	}
 
 	if (this.element.offsetParent !== null) {
 		this.initialize(true);
@@ -3871,7 +4147,7 @@ Row.prototype.reinitialize = function () {
 };
 
 //get heights when doing bulk row style calcs in virtual DOM
-Row.prototype.calcHeight = function () {
+Row.prototype.calcHeight = function (force) {
 
 	var maxHeight = 0,
 	    minHeight = this.table.options.resizableRows ? this.element.clientHeight : 0;
@@ -3883,7 +4159,12 @@ Row.prototype.calcHeight = function () {
 		}
 	});
 
-	this.height = Math.max(maxHeight, minHeight);
+	if (force) {
+		this.height = Math.max(maxHeight, minHeight);
+	} else {
+		this.height = this.manualHeight ? this.height : Math.max(maxHeight, minHeight);
+	}
+
 	this.heightStyled = this.height ? this.height + "px" : "";
 	this.outerHeight = this.element.offsetHeight;
 };
@@ -3910,7 +4191,7 @@ Row.prototype.normalizeHeight = function (force) {
 		this.clearCellHeight();
 	}
 
-	this.calcHeight();
+	this.calcHeight(force);
 
 	this.setCellHeight();
 };
@@ -3924,6 +4205,8 @@ Row.prototype.normalizeHeight = function (force) {
 //set height of rows
 Row.prototype.setHeight = function (height, force) {
 	if (this.height != height || force) {
+
+		this.manualHeight = true;
 
 		this.height = height;
 		this.heightStyled = height ? height + "px" : "";
@@ -3971,7 +4254,7 @@ Row.prototype.setData = function (data) {
 
 //update the rows data
 Row.prototype.updateData = function (data) {
-	var _this5 = this;
+	var _this6 = this;
 
 	var self = this,
 	    visible = Tabulator.prototype.helpers.elVisible(this.element);
@@ -3982,8 +4265,8 @@ Row.prototype.updateData = function (data) {
 			data = JSON.parse(data);
 		}
 
-		if (_this5.table.options.reactiveData && _this5.table.modExists("reactiveData", true)) {
-			_this5.table.modules.reactiveData.block();
+		if (_this6.table.options.reactiveData && _this6.table.modExists("reactiveData", true)) {
+			_this6.table.modules.reactiveData.block();
 		}
 
 		//mutate incomming data if needed
@@ -3996,13 +4279,13 @@ Row.prototype.updateData = function (data) {
 			self.data[attrname] = data[attrname];
 		}
 
-		if (_this5.table.options.reactiveData && _this5.table.modExists("reactiveData", true)) {
-			_this5.table.modules.reactiveData.unblock();
+		if (_this6.table.options.reactiveData && _this6.table.modExists("reactiveData", true)) {
+			_this6.table.modules.reactiveData.unblock();
 		}
 
 		//update affected cells only
 		for (var attrname in data) {
-			var cell = _this5.getCell(attrname);
+			var cell = _this6.getCell(attrname);
 
 			if (cell) {
 				if (cell.getValue() != data[attrname]) {
@@ -4023,19 +4306,19 @@ Row.prototype.updateData = function (data) {
 				self.table.options.rowFormatter(self.getComponent());
 			}
 		} else {
-			_this5.initialized = false;
-			_this5.height = 0;
-			_this5.heightStyled = "";
+			_this6.initialized = false;
+			_this6.height = 0;
+			_this6.heightStyled = "";
 		}
 
-		if (self.table.options.dataTree !== false && self.table.modExists("dataTree") && typeof data[_this5.table.modules.dataTree.getChildField()] !== "undefined") {
-			_this5.table.modules.dataTree.initializeRow(_this5);
-			_this5.table.rowManager.refreshActiveData("tree", false, true);
+		if (self.table.options.dataTree !== false && self.table.modExists("dataTree") && typeof data[_this6.table.modules.dataTree.getChildField()] !== "undefined") {
+			_this6.table.modules.dataTree.initializeRow(_this6);
+			_this6.table.rowManager.refreshActiveData("tree", false, true);
 		}
 
 		//self.reinitialize();
 
-		self.table.options.rowUpdated.call(_this5.table, self.getComponent());
+		self.table.options.rowUpdated.call(_this6.table, self.getComponent());
 
 		resolve();
 	});
@@ -4148,20 +4431,20 @@ Row.prototype.moveToRow = function (to, before) {
 ///////////////////// Actions  /////////////////////
 
 Row.prototype.delete = function () {
-	var _this6 = this;
+	var _this7 = this;
 
 	return new Promise(function (resolve, reject) {
-		var index = _this6.table.rowManager.getRowIndex(_this6);
+		var index = _this7.table.rowManager.getRowIndex(_this7);
 
-		_this6.deleteActual();
+		_this7.deleteActual();
 
-		if (_this6.table.options.history && _this6.table.modExists("history")) {
+		if (_this7.table.options.history && _this7.table.modExists("history")) {
 
 			if (index) {
-				index = _this6.table.rowManager.rows[index - 1];
+				index = _this7.table.rowManager.rows[index - 1];
 			}
 
-			_this6.table.modules.history.action("rowDelete", _this6, { data: _this6.getData(), pos: !index, index: index });
+			_this7.table.modules.history.action("rowDelete", _this7, { data: _this7.getData(), pos: !index, index: index });
 		}
 
 		resolve();
@@ -4169,7 +4452,6 @@ Row.prototype.delete = function () {
 };
 
 Row.prototype.deleteActual = function (blockRedraw) {
-
 	var index = this.table.rowManager.getRowIndex(this);
 
 	//deselect row if it is selected
@@ -4182,8 +4464,13 @@ Row.prototype.deleteActual = function (blockRedraw) {
 	// }
 
 	//remove any reactive data watchers from row object
-	if (this.table.options.reactiveData && this.table.modExists("reactiveData", true)) {
-		this.table.modules.reactiveData.unwatchRow(this);
+	if (this.table.options.reactiveData && this.table.modExists("reactiveData", true)) {}
+	// this.table.modules.reactiveData.unwatchRow(this);
+
+
+	//remove from group
+	if (this.modules.group) {
+		this.modules.group.removeRow(this);
 	}
 
 	this.table.rowManager.deleteRow(this, blockRedraw);
@@ -4192,11 +4479,6 @@ Row.prototype.deleteActual = function (blockRedraw) {
 
 	this.initialized = false;
 	this.heightInitialized = false;
-
-	//remove from group
-	if (this.modules.group) {
-		this.modules.group.removeRow(this);
-	}
 
 	//recalc column calculations if present
 	if (this.table.modExists("columnCalcs")) {
@@ -4219,14 +4501,11 @@ Row.prototype.deleteCells = function () {
 Row.prototype.wipe = function () {
 	this.deleteCells();
 
-	// this.element.children().each(function(){
-	// 	$(this).remove();
-	// })
-	// this.element.empty();
-
 	while (this.element.firstChild) {
 		this.element.removeChild(this.element.firstChild);
-	} // this.element.remove();
+	}this.element = false;
+	this.modules = {};
+
 	if (this.element.parentNode) {
 		this.element.parentNode.removeChild(this.element);
 	}
@@ -4832,8 +5111,10 @@ Cell.prototype.cancelEdit = function () {
 
 Cell.prototype.delete = function () {
 	this.element.parentNode.removeChild(this.element);
+	this.element = false;
 	this.column.deleteCell(this);
 	this.row.deleteCell(this);
+	this.calcs = {};
 };
 
 //////////////// Navigation /////////////////
@@ -5137,6 +5418,7 @@ Tabulator.prototype.defaultOptions = {
 	langs: {},
 
 	virtualDom: true, //enable DOM virtualization
+	virtualDomBuffer: 0, // set virtual DOM buffer size
 
 	persistentLayout: false, //store column layout in memory
 	persistentSort: false, //store sorting in memory
@@ -5384,7 +5666,7 @@ Tabulator.prototype._clearObjectPointers = function () {
 
 //build tabulator element
 Tabulator.prototype._buildElement = function () {
-	var _this7 = this;
+	var _this8 = this;
 
 	var element = this.element,
 	    mod = this.modules,
@@ -5446,10 +5728,6 @@ Tabulator.prototype._buildElement = function () {
 		this.footerManager.activate();
 	}
 
-	if (options.dataTree && this.modExists("dataTree", true)) {
-		mod.dataTree.initialize();
-	}
-
 	if ((options.persistentLayout || options.persistentSort || options.persistentFilter) && this.modExists("persistence", true)) {
 		mod.persistence.initialize(options.persistenceMode, options.persistenceID);
 	}
@@ -5471,6 +5749,10 @@ Tabulator.prototype._buildElement = function () {
 	}
 
 	this.columnManager.setColumns(options.columns);
+
+	if (options.dataTree && this.modExists("dataTree", true)) {
+		mod.dataTree.initialize();
+	}
 
 	if (this.modExists("frozenRows")) {
 		this.modules.frozenRows.initialize();
@@ -5511,7 +5793,7 @@ Tabulator.prototype._buildElement = function () {
 	if (options.initialHeaderFilter && this.modExists("filter", true)) {
 		options.initialHeaderFilter.forEach(function (item) {
 
-			var column = _this7.columnManager.findColumn(item.field);
+			var column = _this8.columnManager.findColumn(item.field);
 
 			if (column) {
 				mod.filter.setHeaderFilterValue(column, item.value);
@@ -5645,7 +5927,7 @@ Tabulator.prototype._detectBrowser = function () {
 
 //loca data from local file
 Tabulator.prototype.setDataFromLocalFile = function (extensions) {
-	var _this8 = this;
+	var _this9 = this;
 
 	return new Promise(function (resolve, reject) {
 		var input = document.createElement("input");
@@ -5669,7 +5951,7 @@ Tabulator.prototype.setDataFromLocalFile = function (extensions) {
 					return;
 				}
 
-				_this8._setData(data).then(function (data) {
+				_this9._setData(data).then(function (data) {
 					resolve(data);
 				}).catch(function (err) {
 					resolve(err);
@@ -5803,14 +6085,14 @@ Tabulator.prototype.replaceData = function (data, params, config) {
 
 //update table data
 Tabulator.prototype.updateData = function (data) {
-	var _this9 = this;
+	var _this10 = this;
 
 	var self = this;
 	var responses = 0;
 
 	return new Promise(function (resolve, reject) {
-		if (_this9.modExists("ajax")) {
-			_this9.modules.ajax.blockActiveRequest();
+		if (_this10.modExists("ajax")) {
+			_this10.modules.ajax.blockActiveRequest();
 		}
 
 		if (typeof data === "string") {
@@ -5841,11 +6123,11 @@ Tabulator.prototype.updateData = function (data) {
 };
 
 Tabulator.prototype.addData = function (data, pos, index) {
-	var _this10 = this;
+	var _this11 = this;
 
 	return new Promise(function (resolve, reject) {
-		if (_this10.modExists("ajax")) {
-			_this10.modules.ajax.blockActiveRequest();
+		if (_this11.modExists("ajax")) {
+			_this11.modules.ajax.blockActiveRequest();
 		}
 
 		if (typeof data === "string") {
@@ -5853,7 +6135,7 @@ Tabulator.prototype.addData = function (data, pos, index) {
 		}
 
 		if (data) {
-			_this10.rowManager.addRows(data, pos, index).then(function (rows) {
+			_this11.rowManager.addRows(data, pos, index).then(function (rows) {
 				var output = [];
 
 				rows.forEach(function (row) {
@@ -5871,15 +6153,15 @@ Tabulator.prototype.addData = function (data, pos, index) {
 
 //update table data
 Tabulator.prototype.updateOrAddData = function (data) {
-	var _this11 = this;
+	var _this12 = this;
 
 	var self = this,
 	    rows = [],
 	    responses = 0;
 
 	return new Promise(function (resolve, reject) {
-		if (_this11.modExists("ajax")) {
-			_this11.modules.ajax.blockActiveRequest();
+		if (_this12.modExists("ajax")) {
+			_this12.modules.ajax.blockActiveRequest();
 		}
 
 		if (typeof data === "string") {
@@ -5945,10 +6227,10 @@ Tabulator.prototype.getRowFromPosition = function (position, active) {
 
 //delete row from table
 Tabulator.prototype.deleteRow = function (index) {
-	var _this12 = this;
+	var _this13 = this;
 
 	return new Promise(function (resolve, reject) {
-		var row = _this12.rowManager.findRow(index);
+		var row = _this13.rowManager.findRow(index);
 
 		if (row) {
 			row.delete().then(function () {
@@ -5965,17 +6247,17 @@ Tabulator.prototype.deleteRow = function (index) {
 
 //add row to table
 Tabulator.prototype.addRow = function (data, pos, index) {
-	var _this13 = this;
+	var _this14 = this;
 
 	return new Promise(function (resolve, reject) {
 		if (typeof data === "string") {
 			data = JSON.parse(data);
 		}
 
-		_this13.rowManager.addRows(data, pos, index).then(function (rows) {
+		_this14.rowManager.addRows(data, pos, index).then(function (rows) {
 			//recalc column calculations if present
-			if (_this13.modExists("columnCalcs")) {
-				_this13.modules.columnCalcs.recalc(_this13.rowManager.activeRows);
+			if (_this14.modExists("columnCalcs")) {
+				_this14.modules.columnCalcs.recalc(_this14.rowManager.activeRows);
 			}
 
 			resolve(rows[0].getComponent());
@@ -5985,10 +6267,10 @@ Tabulator.prototype.addRow = function (data, pos, index) {
 
 //update a row if it exitsts otherwise create it
 Tabulator.prototype.updateOrAddRow = function (index, data) {
-	var _this14 = this;
+	var _this15 = this;
 
 	return new Promise(function (resolve, reject) {
-		var row = _this14.rowManager.findRow(index);
+		var row = _this15.rowManager.findRow(index);
 
 		if (typeof data === "string") {
 			data = JSON.parse(data);
@@ -5997,8 +6279,8 @@ Tabulator.prototype.updateOrAddRow = function (index, data) {
 		if (row) {
 			row.updateData(data).then(function () {
 				//recalc column calculations if present
-				if (_this14.modExists("columnCalcs")) {
-					_this14.modules.columnCalcs.recalc(_this14.rowManager.activeRows);
+				if (_this15.modExists("columnCalcs")) {
+					_this15.modules.columnCalcs.recalc(_this15.rowManager.activeRows);
 				}
 
 				resolve(row.getComponent());
@@ -6006,10 +6288,10 @@ Tabulator.prototype.updateOrAddRow = function (index, data) {
 				reject(err);
 			});
 		} else {
-			row = _this14.rowManager.addRows(data).then(function (rows) {
+			row = _this15.rowManager.addRows(data).then(function (rows) {
 				//recalc column calculations if present
-				if (_this14.modExists("columnCalcs")) {
-					_this14.modules.columnCalcs.recalc(_this14.rowManager.activeRows);
+				if (_this15.modExists("columnCalcs")) {
+					_this15.modules.columnCalcs.recalc(_this15.rowManager.activeRows);
 				}
 
 				resolve(rows[0].getComponent());
@@ -6022,10 +6304,10 @@ Tabulator.prototype.updateOrAddRow = function (index, data) {
 
 //update row data
 Tabulator.prototype.updateRow = function (index, data) {
-	var _this15 = this;
+	var _this16 = this;
 
 	return new Promise(function (resolve, reject) {
-		var row = _this15.rowManager.findRow(index);
+		var row = _this16.rowManager.findRow(index);
 
 		if (typeof data === "string") {
 			data = JSON.parse(data);
@@ -6046,13 +6328,13 @@ Tabulator.prototype.updateRow = function (index, data) {
 
 //scroll to row in DOM
 Tabulator.prototype.scrollToRow = function (index, position, ifVisible) {
-	var _this16 = this;
+	var _this17 = this;
 
 	return new Promise(function (resolve, reject) {
-		var row = _this16.rowManager.findRow(index);
+		var row = _this17.rowManager.findRow(index);
 
 		if (row) {
-			_this16.rowManager.scrollToRow(row, position, ifVisible).then(function () {
+			_this17.rowManager.scrollToRow(row, position, ifVisible).then(function () {
 				resolve();
 			}).catch(function (err) {
 				reject(err);
@@ -6200,13 +6482,13 @@ Tabulator.prototype.deleteColumn = function (field) {
 
 //scroll to column in DOM
 Tabulator.prototype.scrollToColumn = function (field, position, ifVisible) {
-	var _this17 = this;
+	var _this18 = this;
 
 	return new Promise(function (resolve, reject) {
-		var column = _this17.columnManager.findColumn(field);
+		var column = _this18.columnManager.findColumn(field);
 
 		if (column) {
-			_this17.columnManager.scrollToColumn(column, position, ifVisible).then(function () {
+			_this18.columnManager.scrollToColumn(column, position, ifVisible).then(function () {
 				resolve();
 			}).catch(function (err) {
 				reject(err);
@@ -6401,14 +6683,14 @@ Tabulator.prototype.setPage = function (page) {
 };
 
 Tabulator.prototype.setPageToRow = function (row) {
-	var _this18 = this;
+	var _this19 = this;
 
 	return new Promise(function (resolve, reject) {
-		if (_this18.options.pagination && _this18.modExists("page")) {
-			row = _this18.rowManager.findRow(row);
+		if (_this19.options.pagination && _this19.modExists("page")) {
+			row = _this19.rowManager.findRow(row);
 
 			if (row) {
-				_this18.modules.page.setPageToRow(row).then(function () {
+				_this19.modules.page.setPageToRow(row).then(function () {
 					resolve();
 				}).catch(function () {
 					reject();
@@ -6816,17 +7098,23 @@ Tabulator.prototype.comms = {
 };
 
 var Layout = function Layout(table) {
+
 	this.table = table;
+
 	this.mode = null;
 };
 
 //initialize layout system
+
 Layout.prototype.initialize = function (layout) {
 
 	if (this.modes[layout]) {
+
 		this.mode = layout;
 	} else {
+
 		console.warn("Layout Error - invalid mode set, defaulting to 'fitData' : " + layout);
+
 		this.mode = 'fitData';
 	}
 
@@ -6834,64 +7122,93 @@ Layout.prototype.initialize = function (layout) {
 };
 
 Layout.prototype.getMode = function () {
+
 	return this.mode;
 };
 
 //trigger table layout
+
 Layout.prototype.layout = function () {
+
 	this.modes[this.mode].call(this, this.table.columnManager.columnsByIndex);
 };
 
 //layout render functions
+
 Layout.prototype.modes = {
 
 	//resize columns to fit data the contain
+
 	"fitData": function fitData(columns) {
+
 		columns.forEach(function (column) {
+
 			column.reinitializeWidth();
 		});
 
 		if (this.table.options.responsiveLayout && this.table.modExists("responsiveLayout", true)) {
+
 			this.table.modules.responsiveLayout.update();
 		}
 	},
 
 	//resize columns to fit data the contain
+
 	"fitDataFill": function fitDataFill(columns) {
+
 		columns.forEach(function (column) {
+
 			column.reinitializeWidth();
 		});
 
 		if (this.table.options.responsiveLayout && this.table.modExists("responsiveLayout", true)) {
+
 			this.table.modules.responsiveLayout.update();
 		}
 	},
 
 	//resize columns to fit
+
 	"fitColumns": function fitColumns(columns) {
+
 		var self = this;
 
 		var totalWidth = self.table.element.clientWidth; //table element width
+
 		var fixedWidth = 0; //total width of columns with a defined width
+
 		var flexWidth = 0; //total width available to flexible columns
+
 		var flexGrowUnits = 0; //total number of widthGrow blocks accross all columns
+
 		var flexColWidth = 0; //desired width of flexible columns
+
 		var flexColumns = []; //array of flexible width columns
+
 		var fixedShrinkColumns = []; //array of fixed width columns that can shrink
+
 		var flexShrinkUnits = 0; //total number of widthShrink blocks accross all columns
+
 		var overflowWidth = 0; //horizontal overflow width
+
 		var gapFill = 0; //number of pixels to be added to final column to close and half pixel gaps
 
+
 		function calcWidth(width) {
+
 			var colWidth;
 
 			if (typeof width == "string") {
+
 				if (width.indexOf("%") > -1) {
+
 					colWidth = totalWidth / 100 * parseInt(width);
 				} else {
+
 					colWidth = parseInt(width);
 				}
 			} else {
+
 				colWidth = width;
 			}
 
@@ -6899,6 +7216,7 @@ Layout.prototype.modes = {
 		}
 
 		//ensure columns resize to take up the correct amount of space
+
 		function scaleColumns(columns, freeSpace, colWidth, shrinkCols) {
 
 			var oversizeCols = [],
@@ -6910,26 +7228,36 @@ Layout.prototype.modes = {
 			    undersizeCols = [];
 
 			function calcGrow(col) {
+
 				return colWidth * (col.column.definition.widthGrow || 1);
 			}
 
 			function calcShrink(col) {
+
 				return calcWidth(col.width) - colWidth * (col.column.definition.widthShrink || 0);
 			}
 
 			columns.forEach(function (col, i) {
+
 				var width = shrinkCols ? calcShrink(col) : calcGrow(col);
+
 				if (col.column.minWidth >= width) {
+
 					oversizeCols.push(col);
 				} else {
+
 					undersizeCols.push(col);
+
 					changeUnits += shrinkCols ? col.column.definition.widthShrink || 1 : col.column.definition.widthGrow || 1;
 				}
 			});
 
 			if (oversizeCols.length) {
+
 				oversizeCols.forEach(function (col) {
+
 					oversizeSpace += shrinkCols ? col.width - col.column.minWidth : col.column.minWidth;
+
 					col.width = col.column.minWidth;
 				});
 
@@ -6941,9 +7269,11 @@ Layout.prototype.modes = {
 
 				gap += scaleColumns(undersizeCols, remainingSpace, nextColWidth, shrinkCols);
 			} else {
+
 				gap = changeUnits ? freeSpace - Math.floor(freeSpace / changeUnits) * changeUnits : freeSpace;
 
 				undersizeCols.forEach(function (column) {
+
 					column.width = shrinkCols ? calcShrink(column) : calcGrow(column);
 				});
 			}
@@ -6952,20 +7282,25 @@ Layout.prototype.modes = {
 		}
 
 		if (this.table.options.responsiveLayout && this.table.modExists("responsiveLayout", true)) {
+
 			this.table.modules.responsiveLayout.update();
 		}
 
 		//adjust for vertical scrollbar if present
+
 		if (this.table.rowManager.element.scrollHeight > this.table.rowManager.element.clientHeight) {
+
 			totalWidth -= this.table.rowManager.element.offsetWidth - this.table.rowManager.element.clientWidth;
 		}
 
 		columns.forEach(function (column) {
+
 			var width, minWidth, colWidth;
 
 			if (column.visible) {
 
 				width = column.definition.width;
+
 				minWidth = parseInt(column.minWidth);
 
 				if (width) {
@@ -6975,61 +7310,85 @@ Layout.prototype.modes = {
 					fixedWidth += colWidth > minWidth ? colWidth : minWidth;
 
 					if (column.definition.widthShrink) {
+
 						fixedShrinkColumns.push({
+
 							column: column,
+
 							width: colWidth > minWidth ? colWidth : minWidth
+
 						});
+
 						flexShrinkUnits += column.definition.widthShrink;
 					}
 				} else {
+
 					flexColumns.push({
+
 						column: column,
+
 						width: 0
+
 					});
+
 					flexGrowUnits += column.definition.widthGrow || 1;
 				}
 			}
 		});
 
 		//calculate available space
+
 		flexWidth = totalWidth - fixedWidth;
 
 		//calculate correct column size
+
 		flexColWidth = Math.floor(flexWidth / flexGrowUnits);
 
 		//generate column widths
+
 		var gapFill = scaleColumns(flexColumns, flexWidth, flexColWidth, false);
 
 		//increase width of last column to account for rounding errors
+
 		if (flexColumns.length && gapFill > 0) {
+
 			flexColumns[flexColumns.length - 1].width += +gapFill;
 		}
 
 		//caculate space for columns to be shrunk into
+
 		flexColumns.forEach(function (col) {
+
 			flexWidth -= col.width;
 		});
 
 		overflowWidth = Math.abs(gapFill) + flexWidth;
 
 		//shrink oversize columns if there is no available space
+
 		if (overflowWidth > 0 && flexShrinkUnits) {
+
 			gapFill = scaleColumns(fixedShrinkColumns, overflowWidth, Math.floor(overflowWidth / flexShrinkUnits), true);
 		}
 
 		//decrease width of last column to account for rounding errors
+
 		if (fixedShrinkColumns.length) {
+
 			fixedShrinkColumns[fixedShrinkColumns.length - 1].width -= gapFill;
 		}
 
 		flexColumns.forEach(function (col) {
+
 			col.column.setWidth(col.width);
 		});
 
 		fixedShrinkColumns.forEach(function (col) {
+
 			col.column.setWidth(col.width);
 		});
 	}
+
 };
 
 Tabulator.prototype.registerModule("layout", Layout);

@@ -116,6 +116,7 @@ Tabulator.prototype.defaultOptions = {
 	langs:{},
 
 	virtualDom:true, //enable DOM virtualization
+    virtualDomBuffer:0, // set virtual DOM buffer size
 
 	persistentLayout:false, //store column layout in memory
 	persistentSort:false, //store sorting in memory
@@ -429,10 +430,6 @@ Tabulator.prototype._buildElement = function(){
 		this.footerManager.activate();
 	}
 
-	if(options.dataTree && this.modExists("dataTree", true)){
-		mod.dataTree.initialize();
-	}
-
 	if( (options.persistentLayout || options.persistentSort || options.persistentFilter) && this.modExists("persistence", true)){
 		mod.persistence.initialize(options.persistenceMode, options.persistenceID);
 	}
@@ -454,6 +451,10 @@ Tabulator.prototype._buildElement = function(){
 	}
 
 	this.columnManager.setColumns(options.columns);
+
+	if(options.dataTree && this.modExists("dataTree", true)){
+		mod.dataTree.initialize();
+	}
 
 	if(this.modExists("frozenRows")){
 		this.modules.frozenRows.initialize();
@@ -645,12 +646,12 @@ Tabulator.prototype.setDataFromLocalFile = function(extensions){
 			reader.onload = (e) => {
 
 				try {
-			        data = JSON.parse(reader.result);
-			    } catch(e) {
-			        console.warn("File Load Error - File contents is invalid JSON", e);
-			        reject(e);
-			        return;
-			    }
+					data = JSON.parse(reader.result);
+				} catch(e) {
+					console.warn("File Load Error - File contents is invalid JSON", e);
+					reject(e);
+					return;
+				}
 
 				this._setData(data)
 				.then((data) => {
@@ -686,53 +687,53 @@ Tabulator.prototype._setData = function(data, params, config, inPosition){
 
 	if(typeof(data) === "string"){
 		if (data.indexOf("{") == 0 || data.indexOf("[") == 0){
-				//data is a json encoded string
-				return self.rowManager.setData(JSON.parse(data), inPosition);
-			}else{
-
-				if(self.modExists("ajax", true)){
-					if(params){
-						self.modules.ajax.setParams(params);
-					}
-
-					if(config){
-						self.modules.ajax.setConfig(config);
-					}
-
-					self.modules.ajax.setUrl(data);
-
-					if(self.options.pagination == "remote" && self.modExists("page", true)){
-						self.modules.page.reset(true);
-						return self.modules.page.setPage(1);
-					}else{
-						//assume data is url, make ajax call to url to get data
-						return self.modules.ajax.loadData(inPosition);
-					}
-				}
-			}
+			//data is a json encoded string
+			return self.rowManager.setData(JSON.parse(data), inPosition);
 		}else{
-			if(data){
-				//asume data is already an object
-				return self.rowManager.setData(data, inPosition);
-			}else{
 
-				//no data provided, check if ajaxURL is present;
-				if(self.modExists("ajax") && (self.modules.ajax.getUrl || self.options.ajaxURLGenerator)){
+			if(self.modExists("ajax", true)){
+				if(params){
+					self.modules.ajax.setParams(params);
+				}
 
-					if(self.options.pagination == "remote" && self.modExists("page", true)){
-						self.modules.page.reset(true);
-						return self.modules.page.setPage(1);
-					}else{
-						return self.modules.ajax.loadData(inPosition);
-					}
+				if(config){
+					self.modules.ajax.setConfig(config);
+				}
 
+				self.modules.ajax.setUrl(data);
+
+				if(self.options.pagination == "remote" && self.modExists("page", true)){
+					self.modules.page.reset(true);
+					return self.modules.page.setPage(1);
 				}else{
-					//empty data
-					return self.rowManager.setData([], inPosition);
+					//assume data is url, make ajax call to url to get data
+					return self.modules.ajax.loadData(inPosition);
 				}
 			}
 		}
-	};
+	}else{
+		if(data){
+			//asume data is already an object
+			return self.rowManager.setData(data, inPosition);
+		}else{
+
+			//no data provided, check if ajaxURL is present;
+			if(self.modExists("ajax") && (self.modules.ajax.getUrl || self.options.ajaxURLGenerator)){
+
+				if(self.options.pagination == "remote" && self.modExists("page", true)){
+					self.modules.page.reset(true);
+					return self.modules.page.setPage(1);
+				}else{
+					return self.modules.ajax.loadData(inPosition);
+				}
+
+			}else{
+				//empty data
+				return self.rowManager.setData([], inPosition);
+			}
+		}
+	}
+};
 
 //clear data
 Tabulator.prototype.clearData = function(){

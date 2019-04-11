@@ -298,11 +298,7 @@ RowManager.prototype._setDataActual = function(data, renderInPosition){
 
 	self.table.options.dataLoading.call(this.table, data);
 
-	self.rows.forEach(function(row){
-		row.wipe();
-	});
-
-	self.rows = [];
+	this._wipeElements();
 
 	if(this.table.options.history && this.table.modExists("history")){
 		this.table.modules.history.clear();
@@ -334,6 +330,18 @@ RowManager.prototype._setDataActual = function(data, renderInPosition){
 		console.error("Data Loading Error - Unable to process data due to invalid data type \nExpecting: array \nReceived: ", typeof data, "\nData:     ", data);
 	}
 };
+
+RowManager.prototype._wipeElements = function(){
+	this.rows.forEach(function(row){
+		row.wipe();
+	});
+
+	if(this.table.options.groupBy && this.table.modExists("groupRows")){
+		this.table.modules.groupRows.wipe();
+	}
+
+	this.rows = [];
+}
 
 RowManager.prototype.deleteRow = function(row, blockRedraw){
 	var allIndex = this.rows.indexOf(row),
@@ -1132,6 +1140,10 @@ RowManager.prototype.reRenderInPosition = function(callback){
 		this.scrollHorizontal(left);
 	}else{
 		this.renderTable();
+
+		if(callback){
+			callback();
+		}
 	}
 };
 
@@ -1288,14 +1300,13 @@ RowManager.prototype._virtualRenderFill = function(position, forceMove, offset){
 	if(!position){
 		self._clearVirtualDom();
 	}else{
-		// element.children().detach();
 		while(element.firstChild) element.removeChild(element.firstChild);
 
 		//check if position is too close to bottom of table
-		let heightOccpied = (self.displayRowsCount - position + 1) * self.vDomRowHeight;
+		let heightOccupied  = (self.displayRowsCount - position + 1) * self.vDomRowHeight;
 
-		if(heightOccpied < self.height){
-			position -= Math.ceil((self.height - heightOccpied) / self.vDomRowHeight);
+		if(heightOccupied  < self.height){
+			position -= Math.ceil((self.height - heightOccupied ) / self.vDomRowHeight);
 
 			if(position < 0){
 				position = 0;

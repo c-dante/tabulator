@@ -432,11 +432,6 @@ Edit.prototype.editors = {
 		onRendered(function () {
 			input.focus();
 			input.style.height = "100%";
-
-			//submit new value on blur
-			input.addEventListener("blur", function(e){
-				onChange();
-			});
 		});
 
 		function onChange(){
@@ -452,6 +447,11 @@ Edit.prototype.editors = {
 				cancel();
 			}
 		}
+
+		//submit new value on blur
+		input.addEventListener("blur", function(e){
+			onChange();
+		});
 
 		//submit new value on enter
 		input.addEventListener("keydown", function(e){
@@ -720,6 +720,7 @@ Edit.prototype.editors = {
 				currentItem.element.classList.remove("active");
 			}
 
+
 			currentItem = item;
 			input.value = item.label === "&nbsp;" ? "" : item.label;
 
@@ -779,7 +780,7 @@ Edit.prototype.editors = {
 		input.style.boxSizing = "border-box";
 		input.readOnly = true;
 
-		input.value = initialValue;
+		input.value = typeof initialValue !== "undefined" ? initialValue : "";
 
 		if(editorParams.values === true){
 			parseItems(getUniqueColumnValues(), initialValue);
@@ -795,6 +796,7 @@ Edit.prototype.editors = {
 				case 38: //up arrow
 				e.stopImmediatePropagation();
 				e.stopPropagation();
+				e.preventDefault();
 
 				index = dataItems.indexOf(currentItem);
 
@@ -806,6 +808,7 @@ Edit.prototype.editors = {
 				case 40: //down arrow
 				e.stopImmediatePropagation();
 				e.stopPropagation();
+				e.preventDefault();
 
 				index = dataItems.indexOf(currentItem);
 
@@ -816,6 +819,13 @@ Edit.prototype.editors = {
 						setCurrentItem(dataItems[index + 1]);
 					}
 				}
+				break;
+
+				case 37: //left arrow
+				case 39: //right arrow
+				e.stopImmediatePropagation();
+				e.stopPropagation();
+				e.preventDefault();
 				break;
 
 				case 13: //enter
@@ -924,14 +934,40 @@ Edit.prototype.editors = {
 				}
 			}
 
+			if(editorParams.searchFunc){
+				itemList.forEach(function(item){
+					item.search = {
+						title:item.title,
+						value:item.value,
+					};
+				});
+			}
+
 			allItems = itemList;
 		}
 
 		function filterList(term, intialLoad){
-			var matches = [];
+			var matches = [],
+			searchObjs = [],
+			searchResults = [];
 
 			if(editorParams.searchFunc){
-				matches = editorParams.searchFunc(term, values);
+
+				allItems.forEach(function(item){
+					searchObjs.push(item.search);
+				});
+
+				searchResults = editorParams.searchFunc(term, searchObjs);
+
+				searchResults.forEach(function(result){
+					var match = allItems.find(function(item){
+						return item.search === result;
+					});
+
+					if(match){
+						matches.push(match);
+					}
+				});
 			}else{
 				if(term === ""){
 
@@ -1026,8 +1062,8 @@ Edit.prototype.editors = {
 			if(currentItem){
 				if(initialValue !== currentItem.value){
 					initialValue = currentItem.value;
-					input.value = currentItem.value;
-					success(input.value);
+					input.value = currentItem.title;
+					success(currentItem.value);
 				}else{
 					cancel();
 				}
@@ -1094,6 +1130,7 @@ Edit.prototype.editors = {
 				case 38: //up arrow
 				e.stopImmediatePropagation();
 				e.stopPropagation();
+				e.preventDefault();
 
 				index = displayItems.indexOf(currentItem);
 
@@ -1107,6 +1144,7 @@ Edit.prototype.editors = {
 				case 40: //down arrow
 				e.stopImmediatePropagation();
 				e.stopPropagation();
+				e.preventDefault();
 
 				index = displayItems.indexOf(currentItem);
 
@@ -1117,6 +1155,14 @@ Edit.prototype.editors = {
 						setCurrentItem(displayItems[index + 1]);
 					}
 				}
+				break;
+
+
+				case 37: //left arrow
+				case 39: //right arrow
+				e.stopImmediatePropagation();
+				e.stopPropagation();
+				e.preventDefault();
 				break;
 
 				case 13: //enter
@@ -1344,25 +1390,27 @@ Edit.prototype.editors = {
 
 		//style bar
 		bar.style.display = "inline-block";
-		bar.style.position = "absolute";
-		bar.style.top = "8px";
-		bar.style.bottom = "8px";
-		bar.style.left = "4px";
-		bar.style.marginRight = "4px";
+		bar.style.position = "relative";
+		// bar.style.top = "8px";
+		// bar.style.bottom = "8px";
+		// bar.style.left = "4px";
+		// bar.style.marginRight = "4px";
+		bar.style.height = "100%";
 		bar.style.backgroundColor = "#488CE9";
 		bar.style.maxWidth = "100%";
 		bar.style.minWidth = "0%";
 
 		//style cell
-		element.style.padding = "0 4px";
+		element.style.padding = "4px 4px";
 
 		//make sure value is in range
 		value = Math.min(parseFloat(value), max);
 		value = Math.max(parseFloat(value), min);
 
 		//workout percentage
-		value = 100 - Math.round((value - min) / percent);
-		bar.style.right = value + "%";
+		value = Math.round((value - min) / percent);
+		// bar.style.right = value + "%";
+		bar.style.width = value + "%";
 
 		element.setAttribute("aria-valuemin", min);
 		element.setAttribute("aria-valuemax", max);
