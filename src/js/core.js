@@ -65,11 +65,18 @@ Tabulator.prototype.defaultOptions = {
 
 	sortOrderReverse:false, //reverse internal sort ordering
 
+	headerSort:true, //set default global header sort
+	headerSortTristate:false, //set default tristate header sorting
+
 	footerElement:false, //hold footer element
 
 	index:"id", //filed for row index
 
 	keybindings:[], //array for keybindings
+
+	tabEndNewRow:false, //create new row when tab to end of table
+
+	invalidOptionWarnings:true, //allow toggling of invalid option warnings
 
 	clipboard:false, //enable clipboard
 	clipboardCopyStyled:true, //formatted table data
@@ -99,6 +106,13 @@ Tabulator.prototype.defaultOptions = {
 	dataTreeRowExpanded:function(){}, //row has been expanded
 	dataTreeRowCollapsed:function(){}, //row has been collapsed
 
+	printAsHtml:false, //enable print as html
+	printFormatter:false, //printing page formatter
+	printHeader:false, //page header contents
+	printFooter:false, //page footer contents
+	printCopyStyle:true, //enable print as html styling
+	printVisibleRows:true, //restrict print to visible rows only
+	printConfig:{}, //print config options
 
 	addRowPos:"bottom", //position to insert blank rows, top|bottom
 
@@ -109,6 +123,8 @@ Tabulator.prototype.defaultOptions = {
 	selectableCheck:function(data, row){return true;}, //check wheather row is selectable
 
 	headerFilterPlaceholder: false, //placeholder text to display in header filters
+
+	headerVisible:true, //hide header
 
 	history:false, //enable edit history
 
@@ -158,6 +174,8 @@ Tabulator.prototype.defaultOptions = {
 	groupValues:false,
 
 	groupHeader:false, //header generation function
+
+	htmlOutputConfig:false, //html outypu config
 
 	movableColumns:false, //enable movable columns
 
@@ -289,6 +307,17 @@ Tabulator.prototype.defaultOptions = {
 };
 
 Tabulator.prototype.initializeOptions = function(options){
+
+	//warn user if option is not available
+	if(options.invalidOptionWarnings !== false){
+		for (var key in options){
+			if(typeof this.defaultOptions[key] === "undefined"){
+				console.warn("Invalid table constructor option:", key)
+			}
+		}
+	}
+
+	//assign options to table
 	for (var key in this.defaultOptions){
 		if(key in options){
 			this.options[key] = options[key];
@@ -306,7 +335,7 @@ Tabulator.prototype.initializeOptions = function(options){
 
 Tabulator.prototype.initializeElement = function(element){
 
-	if(element instanceof HTMLElement){
+	if(typeof HTMLElement !== "undefined" && element instanceof HTMLElement){
 		this.element = element;
 		return true;
 	}else if(typeof element === "string"){
@@ -330,6 +359,24 @@ Tabulator.prototype.initializeElement = function(element){
 Tabulator.prototype._mapDepricatedFunctionality = function(){
 
 };
+
+Tabulator.prototype._clearSelection = function(){
+
+	this.element.classList.add("tabulator-block-select");
+
+	if (window.getSelection) {
+	  if (window.getSelection().empty) {  // Chrome
+	  	window.getSelection().empty();
+	  } else if (window.getSelection().removeAllRanges) {  // Firefox
+	  	window.getSelection().removeAllRanges();
+	  }
+	} else if (document.selection) {  // IE?
+		document.selection.empty();
+	}
+
+	this.element.classList.remove("tabulator-block-select");
+};
+
 
 //concreate table
 Tabulator.prototype._create = function(){
@@ -534,6 +581,10 @@ Tabulator.prototype._buildElement = function(){
 
 	if(this.modExists("clipboard")){
 		mod.clipboard.initialize();
+	}
+
+	if(options.printAsHtml && this.modExists("print")){
+		mod.print.initialize();
 	}
 
 	options.tableBuilt.call(this);
@@ -769,8 +820,17 @@ Tabulator.prototype.searchData = function(field, type, value){
 };
 
 //get table html
-Tabulator.prototype.getHtml = function(active){
-	return this.rowManager.getHtml(active);
+Tabulator.prototype.getHtml = function(visible, style, config){
+	if(this.modExists("htmlTableExport", true)){
+		return this.modules.htmlTableExport.getHtml(visible, style, config);
+	}
+};
+
+//get print html
+Tabulator.prototype.print = function(visible, style, config){
+	if(this.modExists("print", true)){
+		return this.modules.print.printFullscreen(visible, style, config);
+	}
 };
 
 //retrieve Ajax URL
@@ -1185,6 +1245,21 @@ Tabulator.prototype.deleteColumn = function(field){
 	}else{
 		console.warn("Column Delete Error - No matching column found:", field);
 		return false;
+	}
+};
+
+Tabulator.prototype.moveColumn = function(from, to, after){
+	var fromColumn = this.columnManager.findColumn(from);
+	var toColumn = this.columnManager.findColumn(to);
+
+	if(fromColumn){
+		if(toColumn){
+			this.columnManager.moveColumn(fromColumn, toColumn, after)
+		}else{
+			console.warn("Move Error - No matching column found:", toColumn);
+		}
+	}else{
+		console.warn("Move Error - No matching column found:", from);
 	}
 };
 
@@ -1612,7 +1687,7 @@ Tabulator.prototype.navigateDown = function(){
 
 		if(cell){
 			e.preventDefault();
-			return cell.nav().dpwn();
+			return cell.nav().down();
 		}
 	}
 
@@ -1793,7 +1868,7 @@ Tabulator.prototype.comms = {
 				}
 			}
 
-		}else if(query instanceof HTMLElement || query instanceof Tabulator){
+		}else if((typeof HTMLElement !== "undefined" && query instanceof HTMLElement) || query instanceof Tabulator){
 			match = Tabulator.prototype.comms.matchElement(query);
 
 			if(match){

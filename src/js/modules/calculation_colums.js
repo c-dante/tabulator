@@ -144,6 +144,10 @@ ColumnCalcs.prototype.recalc = function(rows){
 		data = this.rowsToData(rows);
 
 		if(this.topInitialized){
+			if(this.topRow){
+				this.topRow.deleteCells();
+			}
+
 			row = this.generateRow("top", this.rowsToData(rows))
 			this.topRow = row;
 			while(this.topElement.firstChild) this.topElement.removeChild(this.topElement.firstChild);
@@ -152,6 +156,10 @@ ColumnCalcs.prototype.recalc = function(rows){
 		}
 
 		if(this.botInitialized){
+			if(this.botRow){
+				this.botRow.deleteCells();
+			}
+
 			row = this.generateRow("bottom", this.rowsToData(rows))
 			this.botRow = row;
 			while(this.botElement.firstChild) this.botElement.removeChild(this.botElement.firstChild);
@@ -273,7 +281,7 @@ ColumnCalcs.prototype.generateRow = function(pos, data){
 				if(!column.visible){
 					cell.hide();
 				}
-		});
+			});
 
 		this.cells = cells;
 	}
@@ -297,7 +305,7 @@ ColumnCalcs.prototype.generateRowData = function(pos, data){
 			});
 
 			paramKey = type + "Params";
-			params = typeof column.modules.columnCalcs[paramKey] === "function" ? column.modules.columnCalcs[paramKey](value, data) : column.modules.columnCalcs[paramKey];
+			params = typeof column.modules.columnCalcs[paramKey] === "function" ? column.modules.columnCalcs[paramKey](values, data) : column.modules.columnCalcs[paramKey];
 
 			column.setFieldValue(rowData, column.modules.columnCalcs[type](values, data, params));
 		}
@@ -308,11 +316,11 @@ ColumnCalcs.prototype.generateRowData = function(pos, data){
 
 ColumnCalcs.prototype.hasTopCalcs = function(){
 	return	!!(this.topCalcs.length);
-},
+};
 
 ColumnCalcs.prototype.hasBottomCalcs = function(){
 	return	!!(this.botCalcs.length);
-},
+};
 
 //handle table redraw
 ColumnCalcs.prototype.redraw = function(){

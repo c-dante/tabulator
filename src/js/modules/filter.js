@@ -15,7 +15,7 @@ var Filter = function(table){
 Filter.prototype.initializeColumn = function(column, value){
 	var self = this,
 	field = column.getField(),
-	prevSuccess, params;
+	params;
 
 
 	//handle successfull value change
@@ -24,9 +24,9 @@ Filter.prototype.initializeColumn = function(column, value){
 		type = "",
 		filterFunc;
 
-		if(typeof prevSuccess === "undefined" || prevSuccess !== value){
+		if(typeof column.modules.filter.prevSuccess === "undefined" || column.modules.filter.prevSuccess !== value){
 
-			prevSuccess = value;
+			column.modules.filter.prevSuccess = value;
 
 			if(!column.modules.filter.emptyFunc(value)){
 				column.modules.filter.value = value;
@@ -237,6 +237,15 @@ Filter.prototype.generateHeaderFilterElement = function(column, initialValue){
 				editorElement.focus();
 			});
 
+			editorElement.addEventListener("focus", (e) => {
+				var left = this.table.columnManager.element.scrollLeft;
+
+				if(left !== this.table.rowManager.element.scrollLeft){
+					this.table.rowManager.scrollHorizontal(left);
+					this.table.columnManager.scrollHorizontal(left);
+				}
+			})
+
 			//live update filters as user types
 			typingTimer = false;
 
@@ -258,15 +267,15 @@ Filter.prototype.generateHeaderFilterElement = function(column, initialValue){
 
 				if (
 					!(
-						(column.definition.headerFilter === 'autocomplete' ||
-							column.definition.editor === 'autocomplete' ||
-							column.definition.headerFilter === 'tickCross' ||
+						column.definition.headerFilter === 'autocomplete' ||
+						column.definition.headerFilter === 'tickCross' ||
+						((column.definition.editor === 'autocomplete' ||
 							column.definition.editor === 'tickCross') &&
-						column.definition.headerFilter === true
-					)
-				) {
+						column.definition.headerFilter === true)
+						)
+					) {
 					editorElement.addEventListener("keyup", searchTrigger);
-					editorElement.addEventListener("search", searchTrigger);
+				editorElement.addEventListener("search", searchTrigger);
 
 
 				//update number filtered columns on change
@@ -460,16 +469,11 @@ Filter.prototype.findSubFilters = function(filters){
 
 //get all filters
 Filter.prototype.getFilters = function(all, ajax){
-	var self = this,
-	output = [];
+	var output = [];
 
 	if(all){
-		output = self.getHeaderFilters();
+		output = this.getHeaderFilters();
 	}
-
-	self.filterList.forEach(function(filter){
-		output.push({field:filter.field, type:filter.type, value:filter.value});
-	});
 
 	if(ajax){
 		output.forEach(function(item){
@@ -479,8 +483,35 @@ Filter.prototype.getFilters = function(all, ajax){
 		})
 	}
 
+	output = output.concat(this.filtersToArray(this.filterList, ajax));
+
 	return output;
 };
+
+//filter to Object
+Filter.prototype.filtersToArray = function(filterList, ajax){
+	var output = [];
+
+	filterList.forEach((filter) => {
+		var item;
+
+		if(Array.isArray(filter)){
+			output.push(this.filtersToArray(filter, ajax));
+		}else{
+			item = {field:filter.field, type:filter.type, value:filter.value}
+
+			if(ajax){
+				if(typeof item.type == "function"){
+					item.type = "function";
+				}
+			}
+
+			output.push(item);
+		}
+	});
+
+	return output;
+}
 
 //get all filters
 Filter.prototype.getHeaderFilters = function(){
@@ -553,6 +584,7 @@ Filter.prototype.clearHeaderFilter = function(){
 
 	this.headerFilterColumns.forEach(function(column){
 		column.modules.filter.value = null;
+		column.modules.filter.prevSuccess = undefined;
 		self.reloadHeaderFilter(column);
 	});
 

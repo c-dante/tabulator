@@ -297,11 +297,22 @@ Edit.prototype.editors = {
 		var cellValue = cell.getValue(),
 		input = document.createElement("input");
 
-		input.setAttribute("type", "text");
+		input.setAttribute("type", editorParams.search ? "search" : "text");
 
 		input.style.padding = "4px";
 		input.style.width = "100%";
 		input.style.boxSizing = "border-box";
+
+		if(editorParams.elementAttributes && typeof editorParams.elementAttributes == "object"){
+			for (let key in editorParams.elementAttributes){
+				if(key.charAt(0) == "+"){
+					key = key.slice(1);
+					input.setAttribute(key, input.getAttribute(key) + editorParams.elementAttributes["+" + key]);
+				}else{
+					input.setAttribute(key, editorParams.elementAttributes[key]);
+				}
+			}
+		}
 
 		input.value = typeof cellValue !== "undefined" ? cellValue : "";
 
@@ -342,7 +353,7 @@ Edit.prototype.editors = {
 	textarea:function(cell, onRendered, success, cancel, editorParams){
 		var self = this,
 		cellValue = cell.getValue(),
-		value = String(cellValue !== null && cellValue !== "undefined"  ? cellValue : ""),
+		value = String(cellValue !== null && typeof cellValue !== "undefined"  ? cellValue : ""),
 		count = (value.match(/(?:\r\n|\r|\n)/g) || []).length + 1,
 		input = document.createElement("textarea"),
 		scrollHeight = 0;
@@ -355,6 +366,17 @@ Edit.prototype.editors = {
         input.style.boxSizing = "border-box";
         input.style.whiteSpace = "pre-wrap";
         input.style.resize = "none";
+
+        if(editorParams.elementAttributes && typeof editorParams.elementAttributes == "object"){
+        	for (let key in editorParams.elementAttributes){
+        		if(key.charAt(0) == "+"){
+        			key = key.slice(1);
+        			input.setAttribute(key, input.getAttribute(key) + editorParams.elementAttributes["+" + key]);
+        		}else{
+        			input.setAttribute(key, editorParams.elementAttributes[key]);
+        		}
+        	}
+        }
 
         input.value = value;
 
@@ -427,11 +449,32 @@ Edit.prototype.editors = {
 		input.style.width = "100%";
 		input.style.boxSizing = "border-box";
 
+		if(editorParams.elementAttributes && typeof editorParams.elementAttributes == "object"){
+			for (let key in editorParams.elementAttributes){
+				if(key.charAt(0) == "+"){
+					key = key.slice(1);
+					input.setAttribute(key, input.getAttribute(key) + editorParams.elementAttributes["+" + key]);
+				}else{
+					input.setAttribute(key, editorParams.elementAttributes[key]);
+				}
+			}
+		}
+
 		input.value = cellValue;
 
+		var blurFunc = function(e){
+			onChange();
+		}
+
 		onRendered(function () {
+			//submit new value on blur
+			input.removeEventListener("blur", blurFunc);
+
 			input.focus();
 			input.style.height = "100%";
+
+			//submit new value on blur
+			input.addEventListener("blur", blurFunc);
 		});
 
 		function onChange(){
@@ -448,16 +491,11 @@ Edit.prototype.editors = {
 			}
 		}
 
-		//submit new value on blur
-		input.addEventListener("blur", function(e){
-			onChange();
-		});
-
 		//submit new value on enter
 		input.addEventListener("keydown", function(e){
 			switch(e.keyCode){
 				case 13:
-				case 9:
+				// case 9:
 				onChange();
 				break;
 
@@ -494,6 +532,17 @@ Edit.prototype.editors = {
     	input.style.padding = "4px";
     	input.style.width = "100%";
     	input.style.boxSizing = "border-box";
+
+    	if(editorParams.elementAttributes && typeof editorParams.elementAttributes == "object"){
+    		for (let key in editorParams.elementAttributes){
+    			if(key.charAt(0) == "+"){
+    				key = key.slice(1);
+    				input.setAttribute(key, input.getAttribute(key) + editorParams.elementAttributes["+" + key]);
+    			}else{
+    				input.setAttribute(key, editorParams.elementAttributes[key]);
+    			}
+    		}
+    	}
 
     	input.value = cellValue;
 
@@ -543,6 +592,7 @@ Edit.prototype.editors = {
 		var self = this,
 		cellEl = cell.getElement(),
 		initialValue = cell.getValue(),
+		initialDisplayValue = typeof initialValue !== "undefined" || initialValue === null ? initialValue : (typeof editorParams.defaultValue !== "undefined" ? editorParams.defaultValue : ""),
 		input = document.createElement("input"),
 		listEl = document.createElement("div"),
 		dataItems = [],
@@ -550,32 +600,45 @@ Edit.prototype.editors = {
 		currentItem = {},
 		blurable = true;
 
+
+		this.table.rowManager.element.addEventListener("scroll", cancelItem);
+
 		if(Array.isArray(editorParams) || (!Array.isArray(editorParams) && typeof editorParams === "object" && !editorParams.values)){
 			console.warn("DEPRECATION WANRING - values for the select editor must now be passed into the values property of the editorParams object, not as the editorParams object");
 			editorParams = {values:editorParams};
 		}
 
-		function getUniqueColumnValues(){
+		function getUniqueColumnValues(field){
 			var output = {},
-			column = cell.getColumn()._getSelf(),
-			data = self.table.getData();
+			data = self.table.getData(),
+			column;
 
-			data.forEach(function(row){
-				var val = column.getFieldValue(row);
+			if(field){
+				column = self.table.columnManager.getColumnByField(field);
+			}else{
+				column = cell.getColumn()._getSelf();
+			}
 
-				if(val !== null && typeof val !== "undefined" && val !== ""){
-					output[val] = true;
-				}
-			});
+			if(column){
+				data.forEach(function(row){
+					var val = column.getFieldValue(row);
 
-			if(editorParams.sortValuesList){
-				if(editorParams.sortValuesList == "asc"){
-					output = Object.keys(output).sort();
+					if(val !== null && typeof val !== "undefined" && val !== ""){
+						output[val] = true;
+					}
+				});
+
+				if(editorParams.sortValuesList){
+					if(editorParams.sortValuesList == "asc"){
+						output = Object.keys(output).sort();
+					}else{
+						output = Object.keys(output).sort().reverse();
+					}
 				}else{
-					output = Object.keys(output).sort().reverse();
+					output = Object.keys(output);
 				}
 			}else{
-				output = Object.keys(output);
+				console.warn("unable to find matching column to create select lookup list:", field);
 			}
 
 			return output;
@@ -750,9 +813,11 @@ Edit.prototype.editors = {
 			if(!listEl.parentNode){
 
 				if(editorParams.values === true){
-					parseItems(getUniqueColumnValues(), initialValue);
+					parseItems(getUniqueColumnValues(), initialDisplayValue);
+				}else if(typeof editorParams.values === "string"){
+					parseItems(getUniqueColumnValues(editorParams.values), initialDisplayValue);
 				}else{
-					parseItems(editorParams.values || [], initialValue);
+					parseItems(editorParams.values || [], initialDisplayValue);
 				}
 
 
@@ -770,6 +835,12 @@ Edit.prototype.editors = {
 			if(listEl.parentNode){
 				listEl.parentNode.removeChild(listEl);
 			}
+
+			removeScrollListener();
+		}
+
+		function removeScrollListener() {
+			self.table.rowManager.element.removeEventListener("scroll", cancelItem);
 		}
 
 		//style input
@@ -778,12 +849,26 @@ Edit.prototype.editors = {
 		input.style.padding = "4px";
 		input.style.width = "100%";
 		input.style.boxSizing = "border-box";
-		input.readOnly = true;
+		input.style.cursor = "default";
+		input.readOnly = (this.currentCell != false);
 
-		input.value = typeof initialValue !== "undefined" ? initialValue : "";
+		if(editorParams.elementAttributes && typeof editorParams.elementAttributes == "object"){
+			for (let key in editorParams.elementAttributes){
+				if(key.charAt(0) == "+"){
+					key = key.slice(1);
+					input.setAttribute(key, input.getAttribute(key) + editorParams.elementAttributes["+" + key]);
+				}else{
+					input.setAttribute(key, editorParams.elementAttributes[key]);
+				}
+			}
+		}
+
+		input.value = typeof initialValue !== "undefined" || initialValue === null ? initialValue : "";
 
 		if(editorParams.values === true){
 			parseItems(getUniqueColumnValues(), initialValue);
+		}else if(typeof editorParams.values === "string"){
+			parseItems(getUniqueColumnValues(editorParams.values), initialValue);
 		}else{
 			parseItems(editorParams.values || [], initialValue);
 		}
@@ -866,6 +951,7 @@ Edit.prototype.editors = {
 		var self = this,
 		cellEl = cell.getElement(),
 		initialValue = cell.getValue(),
+		initialDisplayValue = typeof initialValue !== "undefined" || initialValue === null ? initialValue : (typeof editorParams.defaultValue !== "undefined" ? editorParams.defaultValue : ""),
 		input = document.createElement("input"),
 		listEl = document.createElement("div"),
 		allItems = [],
@@ -874,29 +960,41 @@ Edit.prototype.editors = {
 		currentItem = {},
 		blurable = true;
 
-		function getUniqueColumnValues(){
+		this.table.rowManager.element.addEventListener("scroll", cancelItem);
+
+		function getUniqueColumnValues(field){
 			var output = {},
-			column = cell.getColumn()._getSelf(),
-			data = self.table.getData();
+			data = self.table.getData(),
+			column;
 
-			data.forEach(function(row){
-				var val = column.getFieldValue(row);
+			if(field){
+				column = self.table.columnManager.getColumnByField(field);
+			}else{
+				column = cell.getColumn()._getSelf();
+			}
 
-				if(val !== null && typeof val !== "undefined" && val !== ""){
-					output[val] = true;
-				}
-			});
+			if(column){
+				data.forEach(function(row){
+					var val = column.getFieldValue(row);
 
+					if(val !== null && typeof val !== "undefined" && val !== ""){
+						output[val] = true;
+					}
+				});
 
-			if(editorParams.sortValuesList){
-				if(editorParams.sortValuesList == "asc"){
-					output = Object.keys(output).sort();
+				if(editorParams.sortValuesList){
+					if(editorParams.sortValuesList == "asc"){
+						output = Object.keys(output).sort();
+					}else{
+						output = Object.keys(output).sort().reverse();
+					}
 				}else{
-					output = Object.keys(output).sort().reverse();
+					output = Object.keys(output);
 				}
 			}else{
-				output = Object.keys(output);
+				console.warn("unable to find matching column to create autocomplete lookup list:", field);
 			}
+
 
 			return output;
 		}
@@ -1093,6 +1191,8 @@ Edit.prototype.editors = {
 
 				if(editorParams.values === true){
 					values = getUniqueColumnValues();
+				}else if(typeof editorParams.values === "string"){
+					values = getUniqueColumnValues(editorParams.values);
 				}else{
 					values = editorParams.values || [];
 				}
@@ -1113,6 +1213,12 @@ Edit.prototype.editors = {
 			if(listEl.parentNode){
 				listEl.parentNode.removeChild(listEl);
 			}
+
+			removeScrollListener();
+		}
+
+		function removeScrollListener() {
+			self.table.rowManager.element.removeEventListener("scroll", cancelItem);
 		}
 
 		//style input
@@ -1121,6 +1227,17 @@ Edit.prototype.editors = {
 		input.style.padding = "4px";
 		input.style.width = "100%";
 		input.style.boxSizing = "border-box";
+
+		if(editorParams.elementAttributes && typeof editorParams.elementAttributes == "object"){
+			for (let key in editorParams.elementAttributes){
+				if(key.charAt(0) == "+"){
+					key = key.slice(1);
+					input.setAttribute(key, input.getAttribute(key) + editorParams.elementAttributes["+" + key]);
+				}else{
+					input.setAttribute(key, editorParams.elementAttributes[key]);
+				}
+			}
+		}
 
 		//allow key based navigation
 		input.addEventListener("keydown", function(e){
@@ -1209,9 +1326,10 @@ Edit.prototype.editors = {
 		});
 
 		input.addEventListener("focus", function(e){
+			var value = initialDisplayValue;
 			showList();
-			input.value = initialValue;
-			filterList(initialValue, true);
+			input.value = value;
+			filterList(value, true);
 		});
 
 		//style list element
@@ -1314,6 +1432,17 @@ Edit.prototype.editors = {
 		star.setAttribute("xml:space", "preserve");
 		star.style.padding = "0 1px";
 
+		if(editorParams.elementAttributes && typeof editorParams.elementAttributes == "object"){
+			for (let key in editorParams.elementAttributes){
+				if(key.charAt(0) == "+"){
+					key = key.slice(1);
+					starsHolder.setAttribute(key, starsHolder.getAttribute(key) + editorParams.elementAttributes["+" + key]);
+				}else{
+					starsHolder.setAttribute(key, editorParams.elementAttributes[key]);
+				}
+			}
+		}
+
 		//create correct number of stars
 		for(var i=1;i<= maxStars;i++){
 			buildStar(i);
@@ -1400,6 +1529,17 @@ Edit.prototype.editors = {
 		bar.style.maxWidth = "100%";
 		bar.style.minWidth = "0%";
 
+		if(editorParams.elementAttributes && typeof editorParams.elementAttributes == "object"){
+			for (let key in editorParams.elementAttributes){
+				if(key.charAt(0) == "+"){
+					key = key.slice(1);
+					bar.setAttribute(key, bar.getAttribute(key) + editorParams.elementAttributes["+" + key]);
+				}else{
+					bar.setAttribute(key, editorParams.elementAttributes[key]);
+				}
+			}
+		}
+
 		//style cell
 		element.style.padding = "4px 4px";
 
@@ -1484,6 +1624,17 @@ Edit.prototype.editors = {
 		input.setAttribute("type", "checkbox");
 		input.style.marginTop = "5px";
 		input.style.boxSizing = "border-box";
+
+		if(editorParams.elementAttributes && typeof editorParams.elementAttributes == "object"){
+			for (let key in editorParams.elementAttributes){
+				if(key.charAt(0) == "+"){
+					key = key.slice(1);
+					input.setAttribute(key, input.getAttribute(key) + editorParams.elementAttributes["+" + key]);
+				}else{
+					input.setAttribute(key, editorParams.elementAttributes[key]);
+				}
+			}
+		}
 
 		input.value = value;
 

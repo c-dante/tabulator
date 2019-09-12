@@ -27,6 +27,10 @@ ColumnManager.prototype.createHeaderElement = function (){
 
 	el.classList.add("tabulator-header");
 
+	if(!this.table.options.headerVisible){
+		el.classList.add("tabulator-header-hidden");
+	}
+
 	return el;
 };
 
@@ -34,11 +38,11 @@ ColumnManager.prototype.initialize = function (){
 	var self = this;
 
 	//scroll body along with header
-	self.element.addEventListener("scroll", function(e){
-		if(!self.blockHozScrollEvent){
-			self.table.rowManager.scrollHorizontal(self.element.scrollLeft);
-		}
-	});
+	// self.element.addEventListener("scroll", function(e){
+	// 	if(!self.blockHozScrollEvent){
+	// 		self.table.rowManager.scrollHorizontal(self.element.scrollLeft);
+	// 	}
+	// });
 };
 
 
@@ -57,17 +61,17 @@ ColumnManager.prototype.getHeadersElement = function(){
 	return this.headersElement;
 };
 
-ColumnManager.prototype.tempScrollBlock = function(){
-	clearTimeout(this.blockHozScrollEvent);
-	this.blockHozScrollEvent = setTimeout(() => {this.blockHozScrollEvent = false;}, 50);
-}
+// ColumnManager.prototype.tempScrollBlock = function(){
+// 	clearTimeout(this.blockHozScrollEvent);
+// 	this.blockHozScrollEvent = setTimeout(() => {this.blockHozScrollEvent = false;}, 50);
+// }
 
 //scroll horizontally to match table body
 ColumnManager.prototype.scrollHorizontal = function(left){
 	var hozAdjust = 0,
 	scrollWidth = this.element.scrollWidth - this.table.element.clientWidth;
 
-	this.tempScrollBlock();
+	// this.tempScrollBlock();
 	this.element.scrollLeft = left;
 
 	//adjust for vertical scrollbar moving table when present
@@ -84,7 +88,7 @@ ColumnManager.prototype.scrollHorizontal = function(left){
 	this.scrollLeft = left;
 
 	if(this.table.modExists("frozenColumns")){
-		this.table.modules.frozenColumns.layout();
+		this.table.modules.frozenColumns.scrollHorizontal();
 	}
 };
 
@@ -260,7 +264,7 @@ ColumnManager.prototype.findColumn = function(subject){
 		}else if(subject instanceof ColumnComponent){
 			//subject is public column component
 			return subject._getSelf() || false;
-		}else if(subject instanceof HTMLElement){
+		}else if(typeof HTMLElement !== "undefined" && subject instanceof HTMLElement){
 			//subject is a HTML element of the column header
 			let match = self.columns.find(function(column){
 				return column.element === subject;
@@ -369,7 +373,30 @@ ColumnManager.prototype.getWidth = function(){
 	return width;
 };
 
+
 ColumnManager.prototype.moveColumn = function(from, to, after){
+	this.moveColumnActual(from, to, after);
+
+	if(this.table.options.responsiveLayout && this.table.modExists("responsiveLayout", true)){
+		this.table.modules.responsiveLayout.initialize();
+	}
+
+	if(this.table.modExists("columnCalcs")){
+		this.table.modules.columnCalcs.recalc(this.table.rowManager.activeRows);
+	}
+
+	to.element.parentNode.insertBefore(from.element, to.element);
+
+	if(after){
+		to.element.parentNode.insertBefore(to.element, from.element);
+	}
+
+	this._verticalAlignHeaders();
+
+	this.table.rowManager.reinitialize();
+}
+
+ColumnManager.prototype.moveColumnActual = function(from, to, after){
 
 	this._moveColumnInArray(this.columns, from, to, after);
 	this._moveColumnInArray(this.columnsByIndex, from, to, after, true);

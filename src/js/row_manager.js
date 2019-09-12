@@ -152,7 +152,7 @@ RowManager.prototype.findRow = function(subject){
 		}else if(subject instanceof RowComponent){
 			//subject is public row component
 			return subject._getSelf() || false;
-		}else if(subject instanceof HTMLElement){
+		}else if(typeof HTMLElement !== "undefined" && subject instanceof HTMLElement){
 			//subject is a HTML element of the row
 			let match = self.rows.find(function(row){
 				return row.element === subject;
@@ -714,75 +714,30 @@ RowManager.prototype.getData = function(active, transform){
 	return output;
 };
 
-RowManager.prototype.getHtml = function(active){
-	var data = this.getData(active),
-	columns = [],
-	header = "",
-	body = "",
-	table = "";
+RowManager.prototype.getComponents = function(active){
+	var self = this,
+	output = [];
 
-		//build header row
-		this.table.columnManager.getColumns().forEach(function(column){
-			var def = column.getDefinition();
+	var rows = active ? self.activeRows : self.rows;
 
-			if(column.visible && !def.hideInHtml){
-				header += `<th>${(def.title || "")}</th>`;
-				columns.push(column);
-			}
-		});
+	rows.forEach(function(row){
+		output.push(row.getComponent());
+	});
 
-		//build body rows
-		data.forEach(function(rowData){
-			var row = "";
+	return output;
+}
 
-			columns.forEach(function(column){
-				var value = column.getFieldValue(rowData);
+RowManager.prototype.getDataCount = function(active){
+	return active ? this.activeRows.length : this.rows.length;
+};
 
-				if(typeof value === "undefined" || value === null){
-					value = ":";
-				}
+RowManager.prototype._genRemoteRequest = function(){
+	var self = this,
+	table = self.table,
+	options = table.options,
+	params = {};
 
-				row += `<td>${value}</td>`;
-			});
-
-			body += `<tr>${row}</tr>`;
-		});
-
-		//build table
-		table = `<table>
-		<thead>
-		<tr>${header}</tr>
-		</thead>
-		<tbody>${body}</tbody>
-		</table>`;
-
-		return table;
-	};
-
-	RowManager.prototype.getComponents = function(active){
-		var self = this,
-		output = [];
-
-		var rows = active ? self.activeRows : self.rows;
-
-		rows.forEach(function(row){
-			output.push(row.getComponent());
-		});
-
-		return output;
-	}
-
-	RowManager.prototype.getDataCount = function(active){
-		return active ? this.rows.length : this.activeRows.length;
-	};
-
-	RowManager.prototype._genRemoteRequest = function(){
-		var self = this,
-		table = self.table,
-		options = table.options,
-		params = {};
-
-		if(table.modExists("page")){
+	if(table.modExists("page")){
 		//set sort data if defined
 		if(options.ajaxSorting){
 			let sorters = self.table.modules.sort.getSort();
@@ -1071,7 +1026,7 @@ RowManager.prototype.setDisplayRows = function(displayRows, index){
 		this.displayRows[index] = displayRows;
 		output = true;
 	}else{
-		this.displayRows.push(displayRows);
+	this.displayRows.push(displayRows)
 		output = index = this.displayRows.length -1;
 	}
 
@@ -1090,6 +1045,46 @@ RowManager.prototype.getDisplayRows = function(index){
 	}
 
 };
+
+
+RowManager.prototype.getVisibleRows = function(viewable){
+	var topEdge = this.element.scrollTop,
+	bottomEdge = this.element.clientHeight + topEdge,
+	topFound = false,
+	topRow = 0,
+	bottomRow = 0,
+	rows = this.getDisplayRows();
+
+	if(viewable){
+
+		this.getDisplayRows();
+
+		for(var i = this.vDomTop; i <= this.vDomBottom; i++){
+
+			if(rows[i]){
+				if(!topFound){
+					if((topEdge - rows[i].getElement().offsetTop) >= 0){
+						topRow = i;
+					}else{
+						topFound = true;
+					}
+				}else{
+					if(bottomEdge - rows[i].getElement().offsetTop >= 0){
+						bottomRow = i;
+					}else{
+						break;
+					}
+				}
+			}
+		}
+	}else{
+		topRow = this.vDomTop;
+		bottomRow = this.vDomBottom;
+	}
+
+	return rows.slice(topRow, bottomRow + 1);
+};
+
 
 //repeat action accross display rows
 RowManager.prototype.displayRowIterator = function(callback){
@@ -1649,6 +1644,8 @@ RowManager.prototype.redraw = function (force){
 	left = this.scrollLeft;
 
 	this.adjustTableSize();
+
+	this.table.tableWidth = this.table.element.clientWidth;
 
 	if(!force){
 

@@ -96,7 +96,7 @@ MoveColumns.prototype.bindTouchEvents = function(column){
 
 			self.startMove(e, column);
 		}, self.checkPeriod);
-	});
+	}, {passive: true});
 
 	colEl.addEventListener("touchmove", function(e){
 		var halfCol, diff, moveToCol;
@@ -142,7 +142,7 @@ MoveColumns.prototype.bindTouchEvents = function(column){
 				prevColWidth = prevCol ? prevCol.getWidth() / 2 : 0;
 			}
 		}
-	});
+	}, {passive: true});
 
 	colEl.addEventListener("touchend", function(e){
 		if(self.checkTimeout){
@@ -234,7 +234,7 @@ MoveColumns.prototype.endMove = function(e){
 		this.table.element.classList.remove("tabulator-block-select");
 
 		if(this.toCol){
-			this.table.columnManager.moveColumn(this.moving, this.toCol, this.toColAfter);
+			this.table.columnManager.moveColumnActual(this.moving, this.toCol, this.toColAfter);
 		}
 
 		this.moving = false;
